@@ -31,37 +31,35 @@ and keeps it current.
 
 ## Active plans
 
-### Plan 2026-06-08-A — Doc reorientation + first commit
-**Goal:** make the offline ML fitter first-class in the docs, clarify the
-interpreter, then make and push the first git commit.
-**Origin session:** `dfe32566-721e-421d-95bc-d416644b027f` (crashed 11:40,
-stream idle timeout). **Continued by:** `0558415f-c661-422e-816d-4558654b95ae`.
-**Decisions (locked by user):** remote already exists → just push · cleanup =
-docs only, no code · author `solomon <s@y76.io>` · default branch `main` ·
-remote `git@github.com:sleimanitani/gymbox.git`.
-
-- [x] **CLAUDE.md** — added "what interpreter/spec mean" + "offline spec fitting
-      (where ML lives)" sections; recast "no ML" → "no *runtime* ML on
-      phone/ingest/oracle; offline fitter is in scope". *(done by dfe32566; both
-      edits verified on disk)*
-- [x] **architecture.md** — reframe "(future) training" so offline spec fitting
-      is MVP-α scope; add a section for the fitter pipeline (labeled videos →
-      fit thresholds/bands/smoothing → human audit → OTA); keep the runtime
-      `model_spec` classifier head explicitly MVP-β+ so the two don't conflate.
-      *(done: §1 goal + non-goal, new §10 "Offline spec fitting" subsection, §14)*
-- [x] **README.md** — one line on the offline fitter in the architecture-in-one-
-      breath paragraph + gates section, without bloating it. *(done: in-one-breath
-      para, gates section, docs table + Claude pointer mention WORKLOG)*
-- [~] **git init & first commit** — `git init -b main`; set local
-      `user.email=s@y76.io`; stage all non-gitignored; commit as
-      `solomon <s@y76.io>`; add remote `git@github.com:sleimanitani/gymbox.git`;
-      `push -u origin main`.
+_None. Next up: ROADMAP Step 3 — implement `server/gymbox/pipeline/rep.py`
+`interpret()` for Gate A (see TRACKER.md). Open a plan here before starting._
 
 ---
 
 ## Completed plans
 
-_None yet._
+### Plan 2026-06-08-A — Doc reorientation + first commit — ✅ done 2026-06-09
+**Goal:** make the offline ML fitter first-class in the docs, clarify the
+interpreter, then make and push the first git commit.
+**Origin session:** `dfe32566-721e-421d-95bc-d416644b027f` (crashed 11:40,
+stream idle timeout). **Finished by:** `0558415f-c661-422e-816d-4558654b95ae`.
+**Decisions (locked by user):** remote already exists → just push · cleanup =
+docs only, no code · author `solomon <s@y76.io>` · default branch `main` ·
+remote `git@github.com:sleimanitani/gymbox.git`.
+**Result:** first commit `8b53a10` (79 files), pushed to `origin/main`.
+
+- [x] **CLAUDE.md** — added "what interpreter/spec mean" + "offline spec fitting
+      (where ML lives)" sections; recast "no ML" → "no *runtime* ML on
+      phone/ingest/oracle; offline fitter is in scope". *(done by dfe32566; both
+      edits verified on disk)*
+- [x] **architecture.md** — §1 goal + non-goal reframed (offline fitter in
+      MVP-α scope, learned `model_spec` deferred), new §10 "Offline spec fitting"
+      subsection (labeled videos → fit → human audit → OTA), §14 clarified.
+- [x] **README.md** — in-one-breath para + gates section mention the offline
+      fitter; docs table + Claude pointer now mention WORKLOG.
+- [x] **git init & first commit** — `git init -b main`; local
+      `user.email=s@y76.io`; committed as `solomon <s@y76.io>`; added remote
+      `git@github.com:sleimanitani/gymbox.git`; `push -u origin main` succeeded.
 
 ---
 
@@ -73,5 +71,5 @@ session can `Read` a dead session's transcript for full context.
 
 | Session id | Date | Summary | Outcome |
 |---|---|---|---|
-| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09 | Recovered from crash: read `dfe32566` transcript, established this WORKLOG system. | active |
+| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09 | Recovered from crash: read `dfe32566` transcript, established this WORKLOG system, finished Plan 2026-06-08-A (architecture.md + README.md + first commit/push `8b53a10`). | active |
 | `dfe32566-721e-421d-95bc-d416644b027f` | 2026-06-09 | Doc reorientation (offline fitter) + first commit. Completed CLAUDE.md edits. | **crashed** 11:40 (stream idle timeout); Plan 2026-06-08-A steps 2–4 left undone |

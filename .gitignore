@@ -1,0 +1,46 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Generated protobuf bindings (regenerate with gymbox-proto/scripts) ---
+gymbox-proto/python/gymbox_proto/*_pb2.py
+gymbox-proto/python/gymbox_proto/*_pb2.pyi
+gymbox-proto/python/gymbox_proto/*_pb2_grpc.py
+gymbox-proto/swift/Sources/GymboxProto/*.pb.swift
+
+# --- Swift / Xcode ---
+.build/
+.swiftpm/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+Package.resolved
+
+# --- Runtime data / blobs / local DBs ---
+gymbox-box/data/
+data/
+*.sqlite
+*.sqlite3
+*.db
+
+# --- Secrets ---
+*.pem
+*.key
+secrets.*
+.env.*
+
+# --- OS / editor ---
+.DS_Store
+*.swp
+.idea/
+.vscode/

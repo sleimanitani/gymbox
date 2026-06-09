@@ -1,0 +1,143 @@
+syntax = "proto3";
+
+package gymbox.v1;
+
+// ============================================================================
+// gymbox wire format — v1
+//
+// LOCKED for MVP-α (architecture.md §5, §8, §11).
+//
+// IMPORTANT: There is NO gRPC service definition in MVP-α. These message types
+// define the *upload envelope* only — the body of `POST /sessions`. The server
+// is edge-first dumb storage; it does not see frames in flight. A gRPC streaming
+// service is reserved for Phase 1+ (fixed cameras) and is intentionally absent
+// here.
+//
+// PoseFrame reserves field numbers 9-15 for future signal carriers. Proto3
+// reused field numbers cause silent data corruption; reserving now is the
+// cheapest possible insurance (architecture.md §11.1).
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// Skeleton / pose
+// ---------------------------------------------------------------------------
+
+// A single 2D keypoint produced by MediaPipe Pose Lite.
+// Coordinates are normalized to [0, 1] relative to the frame.
+message Keypoint {
+  float x = 1;
+  float y = 2;
+  // Visibility / presence score in [0, 1]. Low values indicate the joint is
+  // occluded or out of frame.
+  float visibility = 3;
+}
+
+// One frame of the pose stream. 33 keypoints (MediaPipe Pose topology).
+message PoseFrame {
+  // Monotonic frame index within the session, starting at 0.
+  uint32 frame_index = 1;
+  // Seconds since session start. Authoritative timeline for annotations.
+  double t_s = 2;
+  // Exactly 33 keypoints in MediaPipe Pose order. See keypoints registry
+  // (server/gymbox/dsl/keypoints.py) for index -> name mapping.
+  repeated Keypoint keypoints = 3;
+  // Normalized bounding box of the detected person: [x_min, y_min, x_max, y_max].
+  repeated float bbox = 4;
+  // Overall detection confidence for this frame in [0, 1].
+  float detection_confidence = 5;
+  // Reserved for future per-frame metadata. (6-8 left open for near-term use.)
+
+  // RESERVED for future signal carriers. Do NOT assign without bumping the
+  // proto package version. (architecture.md §11.1)
+  reserved 9 to 15;
+  reserved "hand_landmarks", "objects", "device_orientation",
+           "imu_window", "audio_features", "user_intent_hint", "scene_label";
+}
+
+// The compressed skeleton stream for an entire session. In practice this is
+// uploaded as a separate multipart part referenced by SessionUpload.skeleton_blob;
+// the proto form is provided for tooling / replay.
+message SkeletonBlob {
+  // Format tag, e.g. "gymbox-v1-skeleton".
+  string format = 1;
+  // Sampling rate the frames were captured at (Hz), nominally 15.
+  float sample_rate_hz = 2;
+  repeated PoseFrame frames = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Session upload envelope (body of POST /sessions)
+// ---------------------------------------------------------------------------
+
+message DeviceInfo {
+  string model = 1;        // "iPhone 14 Pro"
+  string ios_version = 2;  // "17.4"
+  string sdk_version = 3;  // "0.1.0"
+}
+
+message SessionMeta {
+  // Durable session identity assigned on the phone. A re-upload with the same
+  // client_session_id is an UPDATE (last-write-wins on annotations; skeleton
+  // blob immutable once stored). (architecture.md §8)
+  string client_session_id = 1;
+  string user_id = 2;
+  string started_at_utc = 3;  // RFC 3339
+  string ended_at_utc = 4;    // RFC 3339
+  DeviceInfo device = 5;
+  string exercise_id = 6;     // "db_curl"
+  // Optional; absent if the integrator did not record a weight.
+  optional double weight_kg = 7;
+}
+
+// Source of an annotation.
+enum AnnotationSource {
+  ANNOTATION_SOURCE_UNSPECIFIED = 0;
+  ANNOTATION_SOURCE_INFERENCE = 1;  // produced by the on-device DSL interpreter
+  ANNOTATION_SOURCE_USER = 2;       // user-entered / user-confirmed
+  ANNOTATION_SOURCE_REPLAY = 3;     // produced by server-side batch replay
+}
+
+message Annotation {
+  // Stable identifier assigned on the phone when the annotation is created.
+  // user_corrections bind to THIS, never to a positional index. (architecture.md §8)
+  string client_annotation_id = 1;
+  // One of the 13 layer ids (capture / session / exercise / equipment / weight /
+  // movement_side / set / active / inactive / inactive_type / rep / rep_phase /
+  // camera_angle). See annotation_layers table (architecture.md §9).
+  string layer_id = 2;
+  double start_s = 3;
+  double end_s = 4;
+  // Layer-dependent value. For rep_phase: "CON"|"ECC"|"ISO_LOADED"|
+  // "ISO_UNLOADED"|"RESET". For movement_side: "left"|"right"|"both"|"alternating".
+  string value = 5;
+  AnnotationSource source = 6;
+  optional float confidence = 7;
+  // Free-form JSON string for layer-specific extras (amplitude, etc.).
+  optional string metadata_json = 8;
+}
+
+// A correction the user made locally, bound to a stable client_annotation_id.
+message UserCorrection {
+  // The annotation this correction targets (by stable id, never index).
+  string client_annotation_id = 1;
+  string layer_id = 2;
+  // "delete" | "edit" | "add". For "add", client_annotation_id is the id of
+  // the newly created annotation (which also appears in `annotations`).
+  string action = 3;
+  optional string reason = 4;  // e.g. "false_positive"
+}
+
+// Reference to the skeleton blob multipart part.
+message SkeletonBlobRef {
+  string format = 1;            // "gymbox-v1-skeleton"
+  string multipart_part_name = 2;
+}
+
+// The complete body of POST /sessions (JSON-encoded in MVP-α; the multipart
+// skeleton part is referenced by skeleton_blob.multipart_part_name).
+message SessionUpload {
+  SessionMeta session = 1;
+  repeated Annotation annotations = 2;
+  repeated UserCorrection user_corrections = 3;
+  SkeletonBlobRef skeleton_blob = 4;
+}

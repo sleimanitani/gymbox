@@ -1,0 +1,53 @@
+# gymbox reference deployment: Postgres + the gymbox app behind nginx.
+# Demo / evaluation / integration-test only (architecture.md §13).
+#
+#   docker compose up --build
+#   # then: curl -s localhost:8080/ml/health
+#
+# Set GYMBOX_DEMO_TOKEN / GYMBOX_ADMIN_TOKEN to mint demo bearer tokens.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: gymbox
+      POSTGRES_PASSWORD: gymbox
+      POSTGRES_DB: gymbox
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gymbox"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  box:
+    build:
+      context: ..
+      dockerfile: gymbox-box/Dockerfile
+    environment:
+      GYMBOX_DB_URL: postgresql+asyncpg://gymbox:gymbox@db/gymbox
+      GYMBOX_EXERCISES_DIR: /app/exercises
+      GYMBOX_BLOB_URL: local:///app/data/blobs
+      # Demo tokens — change these. Empty means "no auth configured" (the box
+      # then rejects all requests, since the default validator denies).
+      GYMBOX_DEMO_TOKEN: ${GYMBOX_DEMO_TOKEN:-demo-token}
+      GYMBOX_ADMIN_TOKEN: ${GYMBOX_ADMIN_TOKEN:-admin-token}
+      GYMBOX_ADMIN_USER: admin
+    volumes:
+      - blobs:/app/data/blobs
+    depends_on:
+      db:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - box
+
+volumes:
+  pgdata:
+  blobs:

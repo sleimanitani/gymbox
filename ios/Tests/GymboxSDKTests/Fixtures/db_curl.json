@@ -1,0 +1,69 @@
+{
+  "id": "db_curl",
+  "display_name": "Dumbbell Bicep Curl",
+  "schema_version": 1,
+
+  "signal": {
+    "type": "joint_axis",
+    "joint": "right_wrist",
+    "axis": "y",
+    "invert": true
+  },
+
+  "smoothing": {
+    "method": "savitzky_golay",
+    "window_frames": 7,
+    "polyorder": 2
+  },
+
+  "rep": {
+    "method": "extrema_pair",
+    "min_amplitude": 0.08,
+    "min_separation_s": 0.25,
+    "prominence_frac": 0.30,
+    "cycle_from": "low"
+  },
+
+  "phase": {
+    "default": "RESET",
+    "rules": [
+      {
+        "label": "RESET",
+        "when": {
+          "abs_v_lt": 0.04,
+          "position_band": "mid"
+        }
+      },
+      {
+        "label": "ISO_LOADED",
+        "when": {
+          "abs_v_lt": 0.04,
+          "position_band": "low"
+        }
+      },
+      {
+        "label": "ISO_UNLOADED",
+        "when": {
+          "abs_v_lt": 0.04,
+          "position_band": "high"
+        }
+      },
+      {
+        "label": "CON",
+        "when": {
+          "abs_v_gt": 0.04,
+          "direction": "toward_high"
+        }
+      },
+      {
+        "label": "ECC",
+        "when": {
+          "abs_v_gt": 0.04,
+          "direction": "toward_low"
+        }
+      }
+    ]
+  },
+
+  "model_spec": null
+}

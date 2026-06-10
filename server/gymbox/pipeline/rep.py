@@ -64,7 +64,7 @@ from ..dsl.models import (
     PositionBand,
 )
 from . import signal as sig
-from .types import InterpretResult, SkeletonStream
+from .types import InterpretResult, RepEvent, SkeletonStream
 
 
 # ---------------------------------------------------------------------------
@@ -179,21 +179,40 @@ def interpret(spec: ExerciseSpec, stream: SkeletonStream) -> InterpretResult:
 
     bands = DynamicBands(band_frac=0.25)
 
-    # --- detection core (IMPLEMENT) ---------------------------------------
-    #
-    # Steps (see module docstring):
-    #   1. Detect extrema on `smoothed`; pair into reps per spec.rep.
-    #   2. bands.fit_from_rep(min, max) from the first completed rep.
-    #   3. For each frame i, build FrameContext from vel[i], direction, band,
-    #      and sign-change recency; phase = evaluate_phase(spec.phase, ctx).
-    #   4. Coalesce frame phases into PhaseSegments; assemble InterpretResult.
-    #
-    # Until implemented, fail loudly so Gate A clearly reports "not done yet".
-    raise NotImplementedError(
-        "pipeline.rep.interpret: implement extrema_pair rep detection + per-frame "
-        "phase labeling (ROADMAP Step 3). Front-end (signal/smoothing/velocity) and "
-        "evaluate_phase() are already provided. Target: Gate A on bicep_curl_1 "
-        "(rep error ≤1, phase agreement ≥85%)."
+    # --- detection core ---------------------------------------------------
+    # 1. Alternating extrema (pivots) over the smoothed signal.
+    pivots = _alternating_extrema(smoothed, spec.rep, stream.sample_rate_hz)
+
+    # 2. Pair pivots into reps; lock the dynamic bands from the FIRST rep.
+    reps = _detect_reps(pivots, smoothed, stream, spec.rep)
+    if reps:
+        first = reps[0]
+        lo = min(smoothed[first.start_frame], smoothed[first.end_frame])
+        hi = smoothed[first.peak_frame]
+        bands.fit_from_rep(signal_min=float(lo), signal_max=float(hi))
+
+    # 3. Per-frame phase labeling. The offline oracle has full lookahead, so
+    #    the bands locked from the first rep are applied to ALL frames (the
+    #    emission delay only matters for the streaming Swift port — Gate B).
+    sign_change_ms = _ms_since_sign_change(vel, stream.sample_rate_hz)
+    frame_phases: list[PhaseLabel] = []
+    for i in range(len(stream)):
+        ctx = FrameContext(
+            abs_v=abs(float(vel[i])),
+            direction=direction_label(float(vel[i])),
+            position_band=bands.band_of(float(smoothed[i])),
+            sign_changed_within_ms=sign_change_ms[i],
+        )
+        frame_phases.append(evaluate_phase(spec.phase, ctx))
+
+    # 4. Coalesce into segments and assemble the result.
+    segments = coalesce_segments(frame_phases, stream)
+    rep_events = [
+        RepEvent(index=r.index, start_s=r.start_s, end_s=r.end_s, amplitude=r.amplitude)
+        for r in reps
+    ]
+    return InterpretResult(
+        reps=rep_events, phase_segments=segments, frame_phases=frame_phases
     )
 
 
@@ -209,6 +228,157 @@ def direction_label(v: float, dead_zone: float = 1e-6) -> str | None:
     if v < -dead_zone:
         return "toward_low"
     return None
+
+
+# ---------------------------------------------------------------------------
+# Extrema + rep detection (the implemented core).
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class _Pivot:
+    """An alternating extremum of the smoothed signal."""
+
+    frame: int
+    value: float
+    kind: str  # "min" | "max"
+
+
+@dataclass(slots=True)
+class _Rep:
+    """A detected rep with the frame indices needed to lock bands + emit."""
+
+    index: int
+    start_frame: int   # opening extremum (a "low" for cycle_from="low")
+    peak_frame: int    # the turn-around extremum (the "high")
+    end_frame: int     # closing extremum (the next "low")
+    start_s: float
+    end_s: float
+    amplitude: float
+
+
+def _alternating_extrema(
+    smoothed: np.ndarray, rep_spec: ExtremaPairRep, sample_rate_hz: float
+) -> list[_Pivot]:
+    """Find strictly-alternating minima/maxima via a retracement (zig-zag) scan.
+
+    A reversal is only confirmed once the signal retraces by `delta` from the
+    running extreme, which rejects jitter and the slow drift inside ISO holds.
+    `delta` is `prominence_frac` of the signal's full peak-to-peak range, floored
+    by `min_amplitude` so a tiny global range can't make `delta` collapse to ~0.
+    Pure NumPy — no scipy — so it ports cleanly to Swift for Gate B.
+    """
+    n = len(smoothed)
+    if n == 0:
+        return []
+    full_range = float(smoothed.max() - smoothed.min())
+    delta = max(rep_spec.min_amplitude, rep_spec.prominence_frac * full_range)
+    min_sep = max(1, int(round(rep_spec.min_separation_s * sample_rate_hz)))
+
+    pivots: list[_Pivot] = []
+    cur_min = cur_max = float(smoothed[0])
+    cur_min_i = cur_max_i = 0
+    direction = 0  # 0 = unknown, +1 = seeking a max, -1 = seeking a min
+
+    def _record(frame: int, value: float, kind: str) -> None:
+        # Enforce min separation: if too close to the previous pivot, keep the
+        # more extreme of the two rather than recording a second pivot.
+        if pivots and frame - pivots[-1].frame < min_sep:
+            prev = pivots[-1]
+            if (kind == "max" and value > prev.value) or (
+                kind == "min" and value < prev.value
+            ):
+                prev.frame, prev.value, prev.kind = frame, value, kind
+            return
+        pivots.append(_Pivot(frame=frame, value=value, kind=kind))
+
+    for i in range(1, n):
+        v = float(smoothed[i])
+        if v > cur_max:
+            cur_max, cur_max_i = v, i
+        if v < cur_min:
+            cur_min, cur_min_i = v, i
+        if direction >= 0 and cur_max - v >= delta:
+            _record(cur_max_i, cur_max, "max")
+            direction = -1
+            cur_min, cur_min_i = v, i
+        elif direction <= 0 and v - cur_min >= delta:
+            _record(cur_min_i, cur_min, "min")
+            direction = 1
+            cur_max, cur_max_i = v, i
+
+    # Close the final pending swing so the last rep isn't dropped: the trailing
+    # hold never retraces, so the closing extremum is otherwise never confirmed.
+    if pivots:
+        last = pivots[-1]
+        if last.kind == "max" and cur_min_i > last.frame and last.value - cur_min >= delta:
+            _record(cur_min_i, cur_min, "min")
+        elif last.kind == "min" and cur_max_i > last.frame and cur_max - last.value >= delta:
+            _record(cur_max_i, cur_max, "max")
+    return pivots
+
+
+def _detect_reps(
+    pivots: list[_Pivot],
+    smoothed: np.ndarray,
+    stream: SkeletonStream,
+    rep_spec: ExtremaPairRep,
+) -> list[_Rep]:
+    """Pair alternating pivots into full cycles.
+
+    For `cycle_from="low"` a rep is a low→high→low triple (the cycle turns around
+    a maximum); for `"high"` it is high→low→high (turns around a minimum). The
+    peak-to-peak amplitude must clear `min_amplitude` for the cycle to count.
+    """
+    center_kind = "max" if rep_spec.cycle_from == "low" else "min"
+    reps: list[_Rep] = []
+    for j in range(1, len(pivots) - 1):
+        center = pivots[j]
+        if center.kind != center_kind:
+            continue
+        opener, closer = pivots[j - 1], pivots[j + 1]
+        if center_kind == "max":
+            amplitude = center.value - min(opener.value, closer.value)
+        else:
+            amplitude = max(opener.value, closer.value) - center.value
+        if amplitude < rep_spec.min_amplitude:
+            continue
+        reps.append(
+            _Rep(
+                index=len(reps),
+                start_frame=opener.frame,
+                peak_frame=center.frame,
+                end_frame=closer.frame,
+                start_s=stream.frames[opener.frame].t_s,
+                end_s=stream.frames[closer.frame].t_s,
+                amplitude=float(amplitude),
+            )
+        )
+    return reps
+
+
+def _ms_since_sign_change(vel: np.ndarray, sample_rate_hz: float) -> list[float | None]:
+    """Per-frame milliseconds since the last velocity sign change.
+
+    Used to populate `FrameContext.sign_changed_within_ms` (a transition guard
+    some specs reference). `None` until the first sign change is seen. A dead
+    zone keeps near-zero ISO-hold noise from registering as crossings.
+    """
+    dt_ms = 1000.0 / sample_rate_hz
+    dead = 1e-6
+    out: list[float | None] = []
+    last_sign = 0
+    frames_since: int | None = None
+    for v in vel:
+        s = 1 if v > dead else (-1 if v < -dead else 0)
+        if s != 0 and last_sign != 0 and s != last_sign:
+            frames_since = 0
+        elif frames_since is not None:
+            frames_since += 1
+        if s != 0:
+            last_sign = s
+        out.append(None if frames_since is None else frames_since * dt_ms)
+    return out
 
 
 def coalesce_segments(

@@ -14,14 +14,14 @@ experiments as Gate A/B tuning happens.
 | `gymbox.persistence` (ORM, schema) | **concrete, locked** | 12 tables |
 | `gymbox.api` (FastAPI router) | **concrete** | only API surface in MVP-α |
 | `gymbox.pipeline.signal` | **concrete** | unit-tested |
-| `gymbox.pipeline.rep.interpret` | **STUB** (`NotImplementedError`) | **Gate A** — Step 3 |
+| `gymbox.pipeline.rep.interpret` | **concrete** | **Gate A PASSES** on synthetic fixture (rep err 0, agreement 0.884) |
 | `gymbox.pipeline.{activity,fsm,classifier,camera_angle,replay}` | stubs | reserved |
 | `gymbox.materializer` | **concrete** | annotations → sets/reps |
 | `gymbox.refdeploy` | **concrete** | reference box only |
 | `exercises/db_curl.json` | **locked** | the MVP-α spec |
 | Alembic migration 0001 | **present** | schema + 13 layers, from metadata |
 | Tests: DSL / signal / etag | **passing** | pure-unit |
-| Tests: Gate A | **xfail** | until `rep.py` |
+| Tests: Gate A | **passing** | on synthetic fixture (see note under Gates) |
 | Tests: ingest | **skip** | until `GYMBOX_TEST_DB` |
 | iOS `Signal` + `evaluatePhase` + `DynamicBands` | **concrete** | mirrors Python |
 | iOS `DSLInterpreter.interpret` | **STUB** (`fatalError`) | **Gate B** — Step 7 |
@@ -31,9 +31,16 @@ experiments as Gate A/B tuning happens.
 ## Gates
 
 - **Gate A** (acceptance, Python vs human labels): rep error ≤ 1, frame-phase
-  agreement ≥ 85%. Status: **not yet attempted** (interpreter unimplemented).
+  agreement ≥ 85%. Status: **PASSES** on the synthetic `bicep_curl_1` fixture —
+  rep error 0 (8/8), agreement 0.884. ⚠️ This proves the *interpreter plumbing*,
+  not the *tuning*: the fixture is synthetic (NOTES.md). The residual ~12%
+  disagreement is dominated by the lead-in/trailing RESET frames, which the
+  generator labels RESET while the arm sits at the bottom (low band) so the
+  interpreter calls them ISO_LOADED — a label-convention artifact, not a tuning
+  error. Re-run on a real human-labelled capture before trusting the number.
 - **Gate B** (port regression, Swift vs Python): ≥ 98% frame-phase identity,
-  identical rep count, ±2-frame boundaries. Status: **blocked on Gate A**.
+  identical rep count, ±2-frame boundaries. Status: **unblocked** (Gate A done);
+  next is porting `DSLInterpreter.swift` to match `rep.py` (ROADMAP Step 7).
 
 ## Hypotheses (db_curl tuning)
 
@@ -55,6 +62,7 @@ agreement, verdict._
 | Date | Fixture | Change | Rep err | Phase agr | Verdict |
 |---|---|---|---|---|---|
 | — | (synthetic) | baseline scaffold | n/a | n/a | interpreter not yet implemented |
+| 2026-06-10 | bicep_curl_1 (synthetic) | implement `rep.interpret` (zig-zag extrema + per-frame phase); db_curl.json **unchanged** | 0 | 0.884 | **Gate A PASS** (plumbing; synthetic fixture) |
 
 ## SOTA / references
 

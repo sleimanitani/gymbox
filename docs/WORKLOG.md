@@ -31,12 +31,43 @@ and keeps it current.
 
 ## Active plans
 
-_None. Next up: ROADMAP Step 3 — implement `server/gymbox/pipeline/rep.py`
-`interpret()` for Gate A (see TRACKER.md). Open a plan here before starting._
+_None. Next up: ROADMAP Step 7 — port `ios/.../DSLInterpreter.swift` to match
+`rep.py` for Gate B (>=98% frame-phase identity, identical rep count, +/-2-frame
+boundaries). Gate A is now done, so Gate B is unblocked. Open a plan here before
+starting._
 
 ---
 
 ## Completed plans
+
+### Plan 2026-06-10-A — Implement `pipeline/rep.py` interpret() (Gate A) — done 2026-06-10
+**Goal:** implement the Python reference oracle's `interpret()` so Gate A passes
+on `bicep_curl_1`. ROADMAP Step 3 / the first MVP-alpha milestone.
+**Session:** `0558415f-c661-422e-816d-4558654b95ae`.
+**Result:** **Gate A PASS** — rep error 0 (8/8), phase agreement 0.884 (floor
+0.85). `db_curl.json` left unchanged. Full suite 18 passed / 3 Postgres-skipped
+(3 Gate A tests flipped xfail->pass). Synthetic fixture -> proves plumbing, not
+tuning (TRACKER.md / NOTES.md).
+**Env note:** repo Python is 3.10 but pkg needs >=3.11 -> provisioned a
+uv-managed 3.12 venv at `server/.venv` (gitignored). Run tests with
+`server/.venv/bin/pytest`.
+
+- [x] **Extrema detection** — pure-NumPy alternating-pivot (zig-zag) finder over
+      the smoothed signal; delta = max(min_amplitude, prominence_frac x
+      peak-to-peak); min-separation guard; closes the final pending pivot at
+      stream end so the last rep isn't dropped.
+- [x] **Rep detection** — pairs pivots into low->high->low cycles (cycle_from),
+      amplitude-gated by min_amplitude, emits RepEvents.
+- [x] **Dynamic bands** locked from the first completed rep (`fit_from_rep`),
+      applied to all frames (offline oracle has full lookahead).
+- [x] **Per-frame phase labeling** — FrameContext (abs_v, direction, band,
+      sign-change recency) -> `evaluate_phase` -> `coalesce_segments` ->
+      InterpretResult.
+- [x] **Gate A run** — passes; experiment logged in TRACKER.md. No spec retune.
+- [x] **Full suite green** + TRACKER status rows updated for `rep.interpret`
+      and Gate A.
+
+---
 
 ### Plan 2026-06-08-A — Doc reorientation + first commit — ✅ done 2026-06-09
 **Goal:** make the offline ML fitter first-class in the docs, clarify the
@@ -71,5 +102,5 @@ session can `Read` a dead session's transcript for full context.
 
 | Session id | Date | Summary | Outcome |
 |---|---|---|---|
-| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09 | Recovered from crash: read `dfe32566` transcript, established this WORKLOG system, finished Plan 2026-06-08-A (architecture.md + README.md + first commit/push `8b53a10`). | active |
+| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09/10 | Recovered from crash; established WORKLOG system; finished Plan 2026-06-08-A (docs + first commit/push `8b53a10`); implemented `rep.interpret` → **Gate A PASS** (Plan 2026-06-10-A). | active |
 | `dfe32566-721e-421d-95bc-d416644b027f` | 2026-06-09 | Doc reorientation (offline fitter) + first commit. Completed CLAUDE.md edits. | **crashed** 11:40 (stream idle timeout); Plan 2026-06-08-A steps 2–4 left undone |

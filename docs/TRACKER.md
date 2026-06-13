@@ -79,6 +79,31 @@ agreement, verdict._
 | — | (synthetic) | baseline scaffold | n/a | n/a | interpreter not yet implemented |
 | 2026-06-10 | bicep_curl_1 (synthetic) | implement `rep.interpret` (zig-zag extrema + per-frame phase); db_curl.json **unchanged** | 0 | 0.884 | **Gate A PASS** (plumbing; synthetic fixture) |
 | 2026-06-13 | bicep_curl_1 (oracle) | port `DSLInterpreter.swift` from rep.py (Gate B: Swift vs Python) | 0 | 1.000 | **Gate B PASS** — exact parity, 0-frame boundary dev |
+| 2026-06-13 | **8 real labelled videos** (training_data, MediaPipe Lite @15Hz) | db_curl **unchanged** vs hand labels | mean 5.38 (CON-count truth) / **≤1 vs right-side reps** | 0.354 | **FAIL 0/8** — see Real-data findings below |
+
+### Real-data findings (2026-06-13) — first run on hand-labelled videos
+
+The synthetic Gate A only proved plumbing; the 8 labelled bicep videos are the
+first real test. db_curl as-is does **not** pass (0/8, micro phase-agreement
+0.354). Root causes (none are code bugs — they're data/spec alignment):
+
+1. **Rep counting is actually good.** Scored against what `right_wrist` can see
+   (right-side + both-arm reps), predicted rep count is within ±1 on all 8. The
+   headline "mean rep-err 5.38" is a ground-truth artifact of counting *every*
+   concentric while the spec tracks one arm.
+2. **Alternating arms (6/8 videos).** 40–51% of frames are left-arm reps; the
+   right-wrist signal is blind to them → both rep- and phase-scoring tank. db_curl
+   is single-arm by design. Needs a decision: per-side eval, side-aware signal, or
+   right-only data.
+3. **Phase-label semantics mismatch.** Labelers' `ISO_UNLOADED` holds have the
+   wrist *down* (bottom; mean y≈0.84 on the cleanest video) — opposite gymbox's
+   definition (ISO_UNLOADED = top/flexed). `ISO_LOADED` used once in 8 videos.
+   Reconcile the labelling convention with the DSL before fitting, or phase
+   agreement is unmeasurable.
+4. **RESET convention differs** + many sub-0.1s phase segments the interpreter
+   doesn't emit. Minor vs 2–3.
+Tooling: `server/scripts/build_fixtures.py` (pose+labels→fixture) and
+`eval_gate_a.py` (per-video Gate A). Reproducible; data/ + training_data/ gitignored.
 
 ## SOTA / references
 

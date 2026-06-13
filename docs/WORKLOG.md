@@ -31,16 +31,40 @@ and keeps it current.
 
 ## Active plans
 
-_None. Next up: ROADMAP Step 10 — verify `gymbox-box` (Docker Compose:
-Postgres + app + nginx) end-to-end: `docker compose up` -> `/ml/health` ->
-seed/fetch a spec -> upload a session -> read it back. The latent layer-seed
-gap that would have broken ingest is already fixed (`seed_reference_data`).
-Note: Docker isn't available on this box, so Step 10 may need the user's env.
-Open a plan here before starting._
+### Plan 2026-06-13-E — Reconcile real-data labels + tune/fit db_curl (NEXT)
+**Blocked on user decisions** (see TRACKER 'Real-data findings'):
+1. Phase-label semantics: labelers' `ISO_UNLOADED` = bottom hold (wrist down),
+   opposite gymbox's def; `ISO_LOADED` unused. Decide: relabel to gymbox
+   convention, remap in the converter, or revise the DSL definitions.
+2. Alternating arms: per-side eval / side-aware signal / right-only data?
+3. Rep-count ground truth: right-side CON (recommended) vs l10 vs all-CON.
+Once settled: build `server/gymbox/fitter/` to search db_curl params maximizing
+Gate A on the (reconciled) real fixtures.
 
 ---
 
 ## Completed plans
+
+### Plan 2026-06-13-D — Real-data detection quality — done 2026-06-13
+**Goal:** measure REAL Gate A on the 8 hand-labelled bicep videos.
+**Session:** `0558415f-c661-422e-816d-4558654b95ae`.
+**Result:** built the pipeline and got real numbers — db_curl as-is **FAILS 0/8**
+(micro phase-agreement 0.354). But rep COUNTING is good (±1 vs right-side reps);
+the bad headline rep-err was a ground-truth artifact. Root causes are data/spec
+alignment, not code: alternating arms (right_wrist blind to ~45% of reps), phase
+label-semantics mismatch (their ISO_UNLOADED = bottom hold), RESET conventions.
+Full detail in TRACKER 'Real-data findings'. Next = Plan 2026-06-13-E.
+**Env note:** extraction venv `/tmp/poseenv` (mediapipe 0.10.35 + opencv-headless),
+model `/tmp/mpmodels/pose_landmarker_lite.task` (Pose Lite). Both ephemeral; see
+[[real-data]] memory. Videos 30fps portrait, resampled to 15Hz.
+
+- [x] **build_fixtures.py** — pose @15Hz + l11 phases + CON rep count → data/fixtures.
+- [x] **eval_gate_a.py** — per-video + aggregate Gate A table.
+- [x] **Run it** — 0/8 pass; numbers + diagnosis in TRACKER.
+- [x] **Assess** — root-caused; decisions handed to user (Plan 2026-06-13-E).
+- [x] **Docs + commit** — scripts committed; data/ + training_data/ gitignored.
+
+---
 
 ### Plan 2026-06-13-C — Integration round-trip (Step 9) — done 2026-06-13
 **Goal:** prove "MVP-α done" — a detected session round-trips through ingest
@@ -185,5 +209,5 @@ session can `Read` a dead session's transcript for full context.
 
 | Session id | Date | Summary | Outcome |
 |---|---|---|---|
-| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09..13 | Crash recovery + WORKLOG system; docs+commit `8b53a10`; **Gate A**, **Gate B** (exact parity), `reinterpret()` (Step 8), **integration round-trip** (Step 9, MVP-α done). | active |
+| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09..13 | Crash recovery + WORKLOG; docs+commit `8b53a10`; **Gate A**, **Gate B** (exact parity), Step 8 reinterpret, Step 9 integration; **real-data eval** (db_curl 0/8, root-caused). | active |
 | `dfe32566-721e-421d-95bc-d416644b027f` | 2026-06-09 | Doc reorientation (offline fitter) + first commit. Completed CLAUDE.md edits. | **crashed** 11:40 (stream idle timeout); Plan 2026-06-08-A steps 2–4 left undone |

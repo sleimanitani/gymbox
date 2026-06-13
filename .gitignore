@@ -48,3 +48,6 @@ secrets.*
 # --- Jupyter / notebooks (scratch; not part of the library) ---
 .ipynb_checkpoints/
 *.ipynb
+
+# --- Raw training data (videos + hand labels; large, not in git) ---
+training_data/

@@ -31,13 +31,46 @@ and keeps it current.
 
 ## Active plans
 
-_None. Next up: ROADMAP Step 9 — integration / reference-box round-trip
-(phone records -> uploads -> Postgres -> queryable back out), then Step 10
-(verify `gymbox-box` end-to-end). Open a plan here before starting._
+_None. Next up: ROADMAP Step 10 — verify `gymbox-box` (Docker Compose:
+Postgres + app + nginx) end-to-end: `docker compose up` -> `/ml/health` ->
+seed/fetch a spec -> upload a session -> read it back. The latent layer-seed
+gap that would have broken ingest is already fixed (`seed_reference_data`).
+Note: Docker isn't available on this box, so Step 10 may need the user's env.
+Open a plan here before starting._
 
 ---
 
 ## Completed plans
+
+### Plan 2026-06-13-C — Integration round-trip (Step 9) — done 2026-06-13
+**Goal:** prove "MVP-α done" — a detected session round-trips through ingest
+into Postgres, materializes, and reads back as sets/reps.
+**Session:** `0558415f-c661-422e-816d-4558654b95ae`.
+**Result:** **DONE.** `tests/test_integration.py` (Postgres-gated): interpret ->
+upload envelope (rep + rep_phase, as the phone sends) -> `ingest_session` ->
+`materialize_pending` -> `read_session` returns 1 set with all 8 reps, each
+carrying phase_durations. Full suite: 23 passed WITH Postgres; 18 passed / 5
+skipped WITHOUT (clean gating).
+**Fixes made along the way:**
+- `Database.seed_reference_data()` added (idempotent annotation-layer seed) and
+  wired into the reference-box startup — `create_all()` never seeded the layer
+  FK rows, so ingest (and the Step-10 ref box) would have failed the layer FK.
+- Repaired stale `test_ingest.py`: wrong read-API kwargs (`user_external_id` ->
+  `user_id`), wrong id (client_session_id -> db uuid), dict access on
+  `read_annotations`. They had never run (Postgres never configured); now green.
+- Shared Postgres-gated `db` fixture moved to conftest (create_all + seed).
+**Env note:** no Docker / no PG server on PATH, but PG 16 binaries at
+`/usr/lib/postgresql/16/bin`. Verified against a throwaway cluster
+(initdb -> pg_ctl on 127.0.0.1:5433, role+db gymbox/gymbox_test). See [[dev-env]].
+
+- [x] **Provision local Postgres** — throwaway PG16 cluster; `GYMBOX_TEST_DB` set.
+- [x] **Fix stale `test_ingest.py`** — now passes against real Postgres.
+- [x] **Write `test_integration.py`** — round-trip asserts 8 reps + phase durations.
+- [x] **Run full suite** — 23 passed (PG) / 18 passed + 5 skipped (no PG).
+- [x] **Docs** — TRACKER rows + integration gate note; plan -> Completed;
+      session index. Commit + push.
+
+---
 
 ### Plan 2026-06-13-B — SessionRecorder.reinterpret() (Step 8) — done 2026-06-13
 **Goal:** generate on-device rep/rep_phase annotations from the Gate-B interpreter.
@@ -152,5 +185,5 @@ session can `Read` a dead session's transcript for full context.
 
 | Session id | Date | Summary | Outcome |
 |---|---|---|---|
-| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09..13 | Crash recovery + WORKLOG system; docs+commit `8b53a10`; `rep.interpret` -> **Gate A PASS**; `DSLInterpreter.swift` -> **Gate B PASS** (exact parity); `SessionRecorder.reinterpret()` (Step 8). | active |
+| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09..13 | Crash recovery + WORKLOG system; docs+commit `8b53a10`; **Gate A**, **Gate B** (exact parity), `reinterpret()` (Step 8), **integration round-trip** (Step 9, MVP-α done). | active |
 | `dfe32566-721e-421d-95bc-d416644b027f` | 2026-06-09 | Doc reorientation (offline fitter) + first commit. Completed CLAUDE.md edits. | **crashed** 11:40 (stream idle timeout); Plan 2026-06-08-A steps 2–4 left undone |

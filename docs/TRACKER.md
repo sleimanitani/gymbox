@@ -22,7 +22,9 @@ experiments as Gate A/B tuning happens.
 | Alembic migration 0001 | **present** | schema + 13 layers, from metadata |
 | Tests: DSL / signal / etag | **passing** | pure-unit |
 | Tests: Gate A | **passing** | on synthetic fixture (see note under Gates) |
-| Tests: ingest | **skip** | until `GYMBOX_TEST_DB` |
+| Tests: ingest | **passing** (Postgres-gated) | fixed stale read-API calls; skips without `GYMBOX_TEST_DB` |
+| Tests: integration (Step 9) | **passing** (Postgres-gated) | end-to-end round-trip: detect → upload → materialize → read back 8 reps |
+| `Database.seed_reference_data()` | **concrete** | seeds 13 annotation-layer FK rows for `create_all()` setups (ref-box + tests); prod uses Alembic |
 | iOS `Signal` + `evaluatePhase` + `DynamicBands` | **concrete** | mirrors Python |
 | iOS `DSLInterpreter.interpret` | **concrete** | **Gate B PASSES** — exact parity with Python oracle (100% identity, 8/8 reps, 0-frame dev) |
 | iOS Pose / Recording / Upload / Catalog | **concrete** | `reinterpret()` done (Step 8) — rep/rep_phase annotations, deterministic ids, idempotent |
@@ -47,6 +49,13 @@ experiments as Gate A/B tuning happens.
   encodes the same comparison for CI/Xcode. (Full `swift test` can't link on this
   Linux box — the SDK target's URLSession files need FoundationNetworking +
   libcurl-dev, no sudo — so the DSL path is verified standalone.)
+- **Integration / "MVP-α done"** (ROADMAP Step 9): a detected session round-trips
+  into Postgres and reads back materialized. Status: **PASSES** — `interpret` →
+  upload envelope → `ingest_session` → `materialize` → `read_session` returns one
+  set with all 8 reps, each carrying phase durations (`tests/test_integration.py`,
+  Postgres-gated). Verified against a throwaway local PG 16 cluster. Remaining MVP-α
+  loose end: Step 10 (verify `gymbox-box` Compose end-to-end) — the latent
+  layer-seed gap that would have broken it is now fixed (`seed_reference_data`).
 
 ## Hypotheses (db_curl tuning)
 

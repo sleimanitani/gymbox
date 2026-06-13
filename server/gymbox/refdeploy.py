@@ -111,6 +111,7 @@ def make_reference_app() -> FastAPI:
     async def _startup() -> None:
         # Reference box creates tables directly; production uses Alembic.
         await backend.db.create_all()
+        await backend.db.seed_reference_data()  # layer FK rows (Alembic seeds these in prod)
         await backend.start()
 
     @app.on_event("shutdown")

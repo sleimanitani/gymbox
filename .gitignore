@@ -44,3 +44,7 @@ secrets.*
 *.swp
 .idea/
 .vscode/
+
+# --- Jupyter / notebooks (scratch; not part of the library) ---
+.ipynb_checkpoints/
+*.ipynb

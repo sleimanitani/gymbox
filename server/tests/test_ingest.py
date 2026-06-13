@@ -21,20 +21,12 @@ from gymbox.api.schemas import SessionUploadIn
 from gymbox.api.sessions import ingest_session, read_annotations, read_session
 from gymbox.config import Config
 from gymbox.dsl.models import ExerciseSpec
-from gymbox.persistence import Database
 
+# Uses the shared Postgres-gated `db` fixture (conftest). Skip cleanly without a DB.
 TEST_DB = os.environ.get("GYMBOX_TEST_DB")
 pytestmark = pytest.mark.skipif(
     not TEST_DB, reason="set GYMBOX_TEST_DB (async Postgres URL) to run ingest tests"
 )
-
-
-@pytest.fixture
-async def db() -> Database:
-    database = Database(TEST_DB)  # type: ignore[arg-type]
-    await database.create_all()
-    yield database
-    await database.dispose()
 
 
 def _upload(client_session_id: str, *, value: str, blob_part: str | None = None) -> SessionUploadIn:
@@ -111,8 +103,9 @@ async def test_reupload_is_update_last_write_wins(db: Database, db_curl_spec: Ex
     assert first.session_id == second.session_id
     assert second.created is False
     async with db.session() as s:
-        anns = await read_annotations(s, user_external_id="user-abc", session_id=second.session_id)
-    rep_values = [a.value for a in anns if a.layer_id == "rep"]
+        anns = await read_annotations(s, user_id="user-abc", session_id=second.session_id)
+    assert anns is not None
+    rep_values = [a["value"] for a in anns if a["layer_id"] == "rep"]
     assert rep_values == ["9"]  # last write won
 
 
@@ -121,7 +114,7 @@ async def test_blob_is_immutable(db: Database, db_curl_spec: ExerciseSpec) -> No
     csid = f"sess-{uuid.uuid4()}"
     cfg = Config(db_url=TEST_DB)  # type: ignore[arg-type]
     async with db.session() as s:
-        await ingest_session(
+        first = await ingest_session(
             s, config=cfg, upload=_upload(csid, value="1", blob_part="skeleton"),
             skeleton_bytes=b"ORIGINAL", idempotency_key=None,
         )
@@ -133,6 +126,6 @@ async def test_blob_is_immutable(db: Database, db_curl_spec: ExerciseSpec) -> No
         )
         await s.commit()
     async with db.session() as s:
-        sess = await read_session(s, user_external_id="user-abc", session_id=csid)
+        sess = await read_session(s, user_id="user-abc", session_id=first.session_id)
     # The blob stored first must survive; the replacement is ignored.
     assert sess is not None

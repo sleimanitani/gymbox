@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -111,6 +112,28 @@ class Database:
         async with self._engine.begin() as conn:
             await conn.execute(CreateSchema(SCHEMA, if_not_exists=True))
             await conn.run_sync(Base.metadata.create_all)
+
+    async def seed_reference_data(self) -> None:
+        """Seed the canonical annotation layers (idempotent).
+
+        `create_all()` builds the tables but not the layer rows that
+        `annotations.layer_id` references; production seeds these via the Alembic
+        migration. Reference-box / test setups that use `create_all()` must call
+        this too, or the first annotation insert fails the layer FK.
+        """
+        async with self._sessionmaker() as s:
+            existing = set((await s.execute(select(AnnotationLayer.id))).scalars().all())
+            for layer in ANNOTATION_LAYERS:
+                if layer["id"] in existing:
+                    continue
+                s.add(
+                    AnnotationLayer(
+                        id=layer["id"],
+                        description=layer.get("description"),
+                        allowed_values=layer.get("allowed_values"),
+                    )
+                )
+            await s.commit()
 
     async def dispose(self) -> None:
         await self._engine.dispose()

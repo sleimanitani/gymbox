@@ -7,16 +7,37 @@ ground-truth labels the two gates score against. See architecture.md §12.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from gymbox.dsl import PhaseLabel, load_spec
 from gymbox.dsl.models import ExerciseSpec
+from gymbox.persistence import Database
 from gymbox.pipeline.types import Frame, SkeletonStream
 
 FIXTURES = Path(__file__).parent / "fixtures"
 EXERCISES = Path(__file__).parents[1] / "exercises"
+
+# Postgres-gated DB tests share this. The persistence layer is Postgres-only by
+# design (JSONB/UUID + named schema); we do NOT down-cast to SQLite (CLAUDE.md).
+TEST_DB = os.environ.get("GYMBOX_TEST_DB")
+requires_db = pytest.mark.skipif(
+    not TEST_DB, reason="set GYMBOX_TEST_DB (async Postgres URL) to run DB tests"
+)
+
+
+@pytest.fixture
+async def db() -> Database:
+    """A ready-to-use Database against GYMBOX_TEST_DB: tables created and the
+    annotation-layer FK rows seeded (so annotation inserts don't violate the
+    layer FK). Mirrors what Alembic does in production."""
+    database = Database(TEST_DB)  # type: ignore[arg-type]
+    await database.create_all()
+    await database.seed_reference_data()
+    yield database
+    await database.dispose()
 
 
 def _load_fixture(name: str) -> dict:

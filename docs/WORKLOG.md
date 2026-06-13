@@ -31,13 +31,36 @@ and keeps it current.
 
 ## Active plans
 
-_None. Next up: ROADMAP Step 8 — `SessionRecorder.reinterpret()` (generate
-live annotations on-device now that Gate B passes), then Step 9 integration
-(reference-box round-trip). Open a plan here before starting._
+_None. Next up: ROADMAP Step 9 — integration / reference-box round-trip
+(phone records -> uploads -> Postgres -> queryable back out), then Step 10
+(verify `gymbox-box` end-to-end). Open a plan here before starting._
 
 ---
 
 ## Completed plans
+
+### Plan 2026-06-13-B — SessionRecorder.reinterpret() (Step 8) — done 2026-06-13
+**Goal:** generate on-device rep/rep_phase annotations from the Gate-B interpreter.
+**Session:** `0558415f-c661-422e-816d-4558654b95ae`.
+**Result:** **DONE.** `reinterpret()` runs `DSLInterpreter.interpret` and emits
+`rep` + `rep_phase` `LocalAnnotation`s with deterministic, ordinal-based
+client_annotation_ids; user/non-inference annotations preserved. Standalone
+swiftc verify on the fixture: 8 rep rows, 33 phase rows (values = phase labels),
+idempotent across repeated calls (no growth, unique ids), a user correction
+survives 2x re-interpretation. `swiftc -typecheck` clean. Two XCTests added.
+**Design:** `rep_phase` value = phase label (materializer keys durations by it);
+`rep` amplitude stays null in MVP-α (wire schema carries no metadata channel —
+no schema expansion). ids are `String(64)` not UUIDs, so deterministic ids are
+safe + idempotent (architecture.md §8).
+
+- [x] **Implement `reinterpret()`** — rep + rep_phase rows, deterministic ids,
+      corrections preserved.
+- [x] **Standalone verify** — swiftc harness over SessionRecorder + Pose + DSL
+      sources; all assertions PASS.
+- [x] **Docs** — TRACKER row updated; plan moved to Completed; session index.
+      Commit + push.
+
+---
 
 ### Plan 2026-06-13-A — Port DSLInterpreter.swift (Gate B) — done 2026-06-13
 **Goal:** port `DSLInterpreter.interpret` to match the Python oracle on
@@ -129,5 +152,5 @@ session can `Read` a dead session's transcript for full context.
 
 | Session id | Date | Summary | Outcome |
 |---|---|---|---|
-| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09..13 | Crash recovery + WORKLOG system; Plan 2026-06-08-A (docs, commit `8b53a10`); `rep.interpret` -> **Gate A PASS**; `DSLInterpreter.swift` port -> **Gate B PASS** (exact parity). | active |
+| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09..13 | Crash recovery + WORKLOG system; docs+commit `8b53a10`; `rep.interpret` -> **Gate A PASS**; `DSLInterpreter.swift` -> **Gate B PASS** (exact parity); `SessionRecorder.reinterpret()` (Step 8). | active |
 | `dfe32566-721e-421d-95bc-d416644b027f` | 2026-06-09 | Doc reorientation (offline fitter) + first commit. Completed CLAUDE.md edits. | **crashed** 11:40 (stream idle timeout); Plan 2026-06-08-A steps 2–4 left undone |

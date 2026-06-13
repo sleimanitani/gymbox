@@ -153,4 +153,58 @@ final class GymboxSDKTests: XCTestCase {
         }
         XCTAssertLessThanOrEqual(maxDev, 2.0, "Gate B: max rep-boundary deviation \(maxDev) frames > 2")
     }
+
+    // MARK: SessionRecorder.reinterpret (ROADMAP Step 8)
+
+    private func recorderFromFixture() throws -> SessionRecorder {
+        let spec = try loadSpec()
+        let stream = try loadStream()
+        let recorder = SessionRecorder(exerciseId: "db_curl", spec: spec, weightKg: 10,
+                                       sampleRateHz: stream.sampleRateHz,
+                                       clientSessionId: "SESS")
+        for f in stream.frames {
+            recorder.ingest(PoseObservation(tSeconds: f.tSeconds, landmarks: f.keypoints))
+        }
+        return recorder
+    }
+
+    func testReinterpretGeneratesRepAndPhaseAnnotations() throws {
+        let recorder = try recorderFromFixture()
+        let ref = DSLInterpreter.interpret(spec: try loadSpec(), stream: recorder.stream)
+
+        recorder.reinterpret()
+        let session = recorder.finish()
+        let reps = session.annotations.filter { $0.layerId == "rep" && $0.source == "inference" }
+        let phases = session.annotations.filter { $0.layerId == "rep_phase" && $0.source == "inference" }
+
+        XCTAssertEqual(reps.count, ref.repCount)
+        XCTAssertEqual(phases.count, ref.phaseSegments.count)
+        // rep_phase values must be phase labels (the materializer keys durations by them).
+        XCTAssertEqual(phases.map { $0.value }, ref.phaseSegments.map { $0.label.rawValue })
+        // Deterministic, ordinal-based ids (identity, not position — architecture.md §8).
+        XCTAssertEqual(reps.first?.clientAnnotationId, "SESS:rep:0")
+        XCTAssertEqual(phases.first?.clientAnnotationId, "SESS:rep_phase:0")
+    }
+
+    func testReinterpretIsIdempotentAndPreservesCorrections() throws {
+        let recorder = try recorderFromFixture()
+        // A user correction added before interpretation must survive re-runs.
+        recorder.add(LocalAnnotation(clientAnnotationId: "user-corr-1", layerId: "rep_phase",
+                                     startSeconds: 1.0, endSeconds: 1.2, value: "ECC", source: "user"))
+
+        recorder.reinterpret()
+        let first = recorder.finish().annotations
+        recorder.reinterpret()
+        let second = recorder.finish().annotations
+
+        // No growth across re-runs, and inference ids are unique (no duplicates).
+        XCTAssertEqual(first.count, second.count)
+        let inferenceIds = second.filter { $0.source == "inference" }.map { $0.clientAnnotationId }
+        XCTAssertEqual(Set(inferenceIds).count, inferenceIds.count)
+
+        // The user correction is preserved verbatim.
+        let corrections = second.filter { $0.source == "user" }
+        XCTAssertEqual(corrections.count, 1)
+        XCTAssertEqual(corrections.first?.clientAnnotationId, "user-corr-1")
+    }
 }

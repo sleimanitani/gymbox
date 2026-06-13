@@ -25,7 +25,7 @@ experiments as Gate A/B tuning happens.
 | Tests: ingest | **skip** | until `GYMBOX_TEST_DB` |
 | iOS `Signal` + `evaluatePhase` + `DynamicBands` | **concrete** | mirrors Python |
 | iOS `DSLInterpreter.interpret` | **concrete** | **Gate B PASSES** — exact parity with Python oracle (100% identity, 8/8 reps, 0-frame dev) |
-| iOS Pose / Recording / Upload / Catalog | **concrete** | `reinterpret()` stubbed |
+| iOS Pose / Recording / Upload / Catalog | **concrete** | `reinterpret()` done (Step 8) — rep/rep_phase annotations, deterministic ids, idempotent |
 | `gymbox-box` (Compose) | **present** | verify round-trip — Step 10 |
 
 ## Gates

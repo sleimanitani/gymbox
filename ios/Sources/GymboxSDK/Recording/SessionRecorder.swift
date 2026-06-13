@@ -85,16 +85,47 @@ public final class SessionRecorder {
         SkeletonStream(sampleRateHz: sampleRateHz, frames: frames)
     }
 
-    /// Re-run interpretation over the full buffered stream to (re)generate
-    /// rep/phase annotations. Depends on DSLInterpreter (Gate B). STUB.
+    /// Re-run interpretation over the full buffered stream to (re)generate the
+    /// inference `rep` / `rep_phase` annotations. Safe to call repeatedly (e.g.
+    /// as more frames arrive) — it is idempotent.
+    ///
+    /// Identity, not position (architecture.md §8): inference rows get
+    /// deterministic `client_annotation_id`s derived from the session id + layer
+    /// + ordinal, so a correction that targets one keeps resolving after a
+    /// re-interpretation, and re-running never duplicates rows. Annotations the
+    /// caller added (any `source` other than "inference" — e.g. user
+    /// corrections) are preserved untouched.
     public func reinterpret() {
-        // TODO (ROADMAP Step 8): once DSLInterpreter.interpret is ported and
-        // passes Gate B, run it here and translate InterpretResult into
-        // LocalAnnotation rows on the `rep` and `rep_phase` layers, preserving
-        // stable client_annotation_ids across re-interpretation so corrections
-        // survive. Until then, recording still works; only auto-annotation is
-        // pending.
-        fatalError("SessionRecorder.reinterpret: pending DSLInterpreter port (ROADMAP Step 8)")
+        let result = DSLInterpreter.interpret(spec: spec, stream: stream)
+
+        // Keep everything the interpreter doesn't own; replace only inference rows.
+        var rebuilt = annotations.filter { $0.source != "inference" }
+
+        for rep in result.reps {
+            rebuilt.append(LocalAnnotation(
+                clientAnnotationId: "\(clientSessionId):rep:\(rep.index)",
+                layerId: "rep",
+                startSeconds: rep.startSeconds,
+                endSeconds: rep.endSeconds,
+                value: String(rep.index + 1),   // 1-based rep number (informational)
+                source: "inference",
+                confidence: nil
+            ))
+        }
+
+        for (i, segment) in result.phaseSegments.enumerated() {
+            rebuilt.append(LocalAnnotation(
+                clientAnnotationId: "\(clientSessionId):rep_phase:\(i)",
+                layerId: "rep_phase",
+                startSeconds: segment.startSeconds,
+                endSeconds: segment.endSeconds,
+                value: segment.label.rawValue,   // materializer keys phase durations by this
+                source: "inference",
+                confidence: nil
+            ))
+        }
+
+        annotations = rebuilt
     }
 
     /// Finalize the session for upload. CONCRETE.

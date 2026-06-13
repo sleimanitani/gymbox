@@ -24,7 +24,7 @@ experiments as Gate A/B tuning happens.
 | Tests: Gate A | **passing** | on synthetic fixture (see note under Gates) |
 | Tests: ingest | **skip** | until `GYMBOX_TEST_DB` |
 | iOS `Signal` + `evaluatePhase` + `DynamicBands` | **concrete** | mirrors Python |
-| iOS `DSLInterpreter.interpret` | **STUB** (`fatalError`) | **Gate B** — Step 7 |
+| iOS `DSLInterpreter.interpret` | **concrete** | **Gate B PASSES** — exact parity with Python oracle (100% identity, 8/8 reps, 0-frame dev) |
 | iOS Pose / Recording / Upload / Catalog | **concrete** | `reinterpret()` stubbed |
 | `gymbox-box` (Compose) | **present** | verify round-trip — Step 10 |
 
@@ -39,8 +39,14 @@ experiments as Gate A/B tuning happens.
   interpreter calls them ISO_LOADED — a label-convention artifact, not a tuning
   error. Re-run on a real human-labelled capture before trusting the number.
 - **Gate B** (port regression, Swift vs Python): ≥ 98% frame-phase identity,
-  identical rep count, ±2-frame boundaries. Status: **unblocked** (Gate A done);
-  next is porting `DSLInterpreter.swift` to match `rep.py` (ROADMAP Step 7).
+  identical rep count, ±2-frame boundaries. Status: **PASSES** — the Swift port
+  reproduces the Python oracle exactly on `bicep_curl_1`: 100% frame-phase
+  identity, 8/8 rep count, 0-frame max boundary deviation. Verified by compiling
+  the 5 DSL sources with `swiftc` against the bundled golden output
+  (`oracle_bicep_curl_1.json`); the XCTest `testGateB_matchesPythonOracle`
+  encodes the same comparison for CI/Xcode. (Full `swift test` can't link on this
+  Linux box — the SDK target's URLSession files need FoundationNetworking +
+  libcurl-dev, no sudo — so the DSL path is verified standalone.)
 
 ## Hypotheses (db_curl tuning)
 
@@ -63,6 +69,7 @@ agreement, verdict._
 |---|---|---|---|---|---|
 | — | (synthetic) | baseline scaffold | n/a | n/a | interpreter not yet implemented |
 | 2026-06-10 | bicep_curl_1 (synthetic) | implement `rep.interpret` (zig-zag extrema + per-frame phase); db_curl.json **unchanged** | 0 | 0.884 | **Gate A PASS** (plumbing; synthetic fixture) |
+| 2026-06-13 | bicep_curl_1 (oracle) | port `DSLInterpreter.swift` from rep.py (Gate B: Swift vs Python) | 0 | 1.000 | **Gate B PASS** — exact parity, 0-frame boundary dev |
 
 ## SOTA / references
 

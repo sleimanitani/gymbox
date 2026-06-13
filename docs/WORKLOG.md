@@ -31,14 +31,41 @@ and keeps it current.
 
 ## Active plans
 
-_None. Next up: ROADMAP Step 7 — port `ios/.../DSLInterpreter.swift` to match
-`rep.py` for Gate B (>=98% frame-phase identity, identical rep count, +/-2-frame
-boundaries). Gate A is now done, so Gate B is unblocked. Open a plan here before
-starting._
+_None. Next up: ROADMAP Step 8 — `SessionRecorder.reinterpret()` (generate
+live annotations on-device now that Gate B passes), then Step 9 integration
+(reference-box round-trip). Open a plan here before starting._
 
 ---
 
 ## Completed plans
+
+### Plan 2026-06-13-A — Port DSLInterpreter.swift (Gate B) — done 2026-06-13
+**Goal:** port `DSLInterpreter.interpret` to match the Python oracle on
+`bicep_curl_1` (>=98% identity, identical rep count, +/-2-frame boundaries).
+ROADMAP Step 7.
+**Session:** `0558415f-c661-422e-816d-4558654b95ae`.
+**Result:** **Gate B PASS — exact parity.** 100% frame-phase identity, rep
+count 8/8, 0-frame max boundary deviation. The Swift port reproduces the
+Python oracle bit-for-bit.
+**Env note:** installed Swift 6.3.2 via swiftly
+(`~/.local/share/swiftly/toolchains/6.3.2/usr/bin/swiftc`). Full `swift test`
+can't link here (SDK target's URLSession files need FoundationNetworking +
+libcurl-dev, no sudo); verified by compiling the 5 DSL sources standalone
+with `swiftc` against the golden oracle output. See [[dev-env]] note in memory.
+
+- [x] **Golden oracle output** — `oracle_bicep_curl_1.json` generated from the
+      Python oracle, bundled in `ios/Tests/GymboxSDKTests/Fixtures/`.
+- [x] **Implement `DSLInterpreter.interpret`** — ported detection core +
+      `alternatingExtrema` / `detectReps` / `msSinceSignChange` /
+      `coalesceSegments`, faithful to rep.py.
+- [x] **Standalone verify** — `swiftc` over the 5 DSL sources + a harness;
+      Gate B PASS (100% / 8 / 0-frame). Sources `swiftc -typecheck` clean.
+- [x] **Real Gate B XCTest** — replaced `testInterpreterPortIsPending` with
+      `testGateB_matchesPythonOracle` (asserts the three Gate B bars).
+- [x] **Docs** — TRACKER status + Gate B result + experiment; plan moved to
+      Completed; session index updated. Commit + push.
+
+---
 
 ### Plan 2026-06-10-A — Implement `pipeline/rep.py` interpret() (Gate A) — done 2026-06-10
 **Goal:** implement the Python reference oracle's `interpret()` so Gate A passes
@@ -102,5 +129,5 @@ session can `Read` a dead session's transcript for full context.
 
 | Session id | Date | Summary | Outcome |
 |---|---|---|---|
-| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09/10 | Recovered from crash; established WORKLOG system; finished Plan 2026-06-08-A (docs + first commit/push `8b53a10`); implemented `rep.interpret` → **Gate A PASS** (Plan 2026-06-10-A). | active |
+| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09..13 | Crash recovery + WORKLOG system; Plan 2026-06-08-A (docs, commit `8b53a10`); `rep.interpret` -> **Gate A PASS**; `DSLInterpreter.swift` port -> **Gate B PASS** (exact parity). | active |
 | `dfe32566-721e-421d-95bc-d416644b027f` | 2026-06-09 | Doc reorientation (offline fitter) + first commit. Completed CLAUDE.md edits. | **crashed** 11:40 (stream idle timeout); Plan 2026-06-08-A steps 2–4 left undone |

@@ -122,6 +122,22 @@ def interpret_timeline(fixture: dict, spec):
     return frame_phases, frame_side, rep_bounds
 
 
+# MediaPipe indices for each arm's wrist + elbow.
+_ARM_JOINTS = {"left": (15, 13), "right": (16, 14)}
+
+
+def arm_visible(frames: list, side: str, gate: float = 0.5) -> bool:
+    """True if `side` arm is reliably visible (median wrist+elbow visibility >= gate).
+
+    A single camera can't see an occluded arm; its low-confidence coordinates are
+    noise. Gating on visibility avoids drawing/counting an arm that isn't there.
+    """
+    wrist, elbow = _ARM_JOINTS[side]
+    vis = sorted((f["keypoints"][wrist][2] + f["keypoints"][elbow][2]) / 2 for f in frames)
+    median = vis[len(vis) // 2] if vis else 0.0
+    return median >= gate
+
+
 def interpret_arm(fixture: dict, spec, joint: str):
     """Run the interpreter on ONE wrist over the whole clip (label-free).
 
@@ -156,9 +172,15 @@ def iter_annotated_frames(fixture: dict, spec, video: Path | None = None,
     dt = 1.0 / rate
 
     if dual:
-        lph, lreps = interpret_arm(fixture, spec, "left_wrist")
-        rph, rreps = interpret_arm(fixture, spec, "right_wrist")
-        info = {"left_reps": len(lreps), "right_reps": len(rreps), "rate": rate}
+        # Visibility gate: only track an arm the camera can actually see. A
+        # single camera can't see an occluded arm, and its low-confidence
+        # coordinates produce phantom reps — so gate detection by it.
+        left_on = arm_visible(frames, "left")
+        right_on = arm_visible(frames, "right")
+        lph, lreps = interpret_arm(fixture, spec, "left_wrist") if left_on else ([], [])
+        rph, rreps = interpret_arm(fixture, spec, "right_wrist") if right_on else ([], [])
+        info = {"left_reps": len(lreps), "right_reps": len(rreps),
+                "left_on": left_on, "right_on": right_on, "rate": rate}
     else:
         frame_phases, frame_side, rep_bounds = interpret_timeline(fixture, spec)
         info = {"rep_total": len(rep_bounds), "rate": rate}
@@ -181,15 +203,21 @@ def iter_annotated_frames(fixture: dict, spec, video: Path | None = None,
             img = np.full((h, w, 3), 30, np.uint8)
 
         if dual:
-            lp, rp = lph[i], rph[i]
-            if lp != "RESET":
+            lp = lph[i] if left_on else "RESET"
+            rp = rph[i] if right_on else "RESET"
+            if left_on and lp != "RESET":
                 ltut += dt
-            if rp != "RESET":
+            if right_on and rp != "RESET":
                 rtut += dt
             ln = sum(1 for s, _ in lreps if s <= i)
             rn = sum(1 for s, _ in rreps if s <= i)
-            draw_skeleton_dual(img, frames[i]["keypoints"], left_phase=lp, right_phase=rp)
-            draw_hud_dual(img, exercise=exercise, left=(ln, lp, ltut), right=(rn, rp, rtut))
+            # draw_skeleton hides low-vis joints anyway; gate phase tint too
+            draw_skeleton_dual(img, frames[i]["keypoints"],
+                               left_phase=lp if left_on else "RESET",
+                               right_phase=rp if right_on else "RESET")
+            draw_hud_dual(img, exercise=exercise,
+                          left=(ln, lp, ltut) if left_on else None,
+                          right=(rn, rp, rtut) if right_on else None)
             draw_timeline_dual(img, left_phases=lph, right_phases=rph,
                                left_reps=lreps, right_reps=rreps, cur_frame=i)
             for s, e in lreps + rreps:
@@ -236,8 +264,12 @@ def render(fixture: dict, spec, video: Path | None, out: Path, png_frame: int | 
         last = info
     if writer is not None:
         writer.release()
-        tag = (f"L {last['left_reps']} / R {last['right_reps']} reps"
-               if dual else f"{last['rep_total']} reps")
+        if dual:
+            lt = f"L {last['left_reps']}" if last.get("left_on") else "L occluded"
+            rt = f"R {last['right_reps']}" if last.get("right_on") else "R occluded"
+            tag = f"{lt} / {rt}"
+        else:
+            tag = f"{last['rep_total']} reps"
         print(f"wrote mp4 -> {out}  ({tag} @ {rate}Hz)")
 
 

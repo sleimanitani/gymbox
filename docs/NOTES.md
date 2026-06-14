@@ -74,14 +74,19 @@ decision. Append here rather than silently diverging from a locked decision.
 - **Alternating arms:** db_curl tracks `right_wrist`; ~45% of these videos are
   left-arm reps. Evaluation is **per-side** (track the active wrist). A
   side-aware signal (or per-side spec selection on device) is a real MVP-β item.
-- **Both-arm detection / "active arm" gating (MVP-β).** To track both arms
+- **Both-arm detection (two gates: visible, then active).** To track both arms
   label-free, run the interpreter independently per wrist (the viz does this).
-  But the *resting* arm over-counts (e.g. Bicep Curl 8: left wrist → 24 reps vs
-  ~13) because the idle arm isn't perfectly still. Doing both arms correctly needs
-  an **active-arm gate** — only credit a rep on the arm that is actually working.
-  This maps to the reserved `active`/`inactive` annotation layers (l7/l8, already
-  in the label schema) and/or a `composite` signal (architecture.md §11.3). The
-  per-frame phase tint is fine; it's the rep *count* on the idle arm that inflates.
+  Two distinct failure modes:
+  1. **Occlusion** — a single camera can't see the far arm in side-on views
+     (Bicep Curl 8: left wrist visibility 0.12). MediaPipe emits low-confidence
+     coords that jitter into phantom reps (left → 24 vs ~13). **Handled in the viz
+     by a visibility gate** (median wrist+elbow vis ≥ 0.5 → tracked, else shown
+     "occluded"). For the library, gate rep emission on keypoint visibility.
+  2. **Active vs resting** — even when both arms are visible, only one may be
+     working (true alternating). Crediting reps to the idle-but-visible arm needs
+     an **active-arm gate** (the reserved `active`/`inactive` layers l7/l8, or a
+     `composite` signal — architecture.md §11.3). MVP-β.
+  Reliable two-arm tracking also implies a frontal-ish camera (both arms visible).
 - **`band_frac` is not in the DSL grammar** (hard-coded 0.25 in
   `DynamicBands`). If band tuning matters for the fitter, promote it to a spec
   field first — don't hard-code spec values.

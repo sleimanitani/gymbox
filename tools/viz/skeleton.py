@@ -142,12 +142,19 @@ def draw_hud_dual(
     img: np.ndarray,
     *,
     exercise: str,
-    left: tuple[int, str, float],    # (reps, phase, tut_s)
-    right: tuple[int, str, float],
+    left: tuple[int, str, float] | None,    # (reps, phase, tut_s) or None if occluded
+    right: tuple[int, str, float] | None,
 ) -> None:
-    """HUD showing BOTH arms: per-arm rep counter, phase chip, running TUT."""
+    """HUD showing each VISIBLE arm: rep counter, phase chip, running TUT.
+
+    An arm passed as None is occluded (not visible to the camera) and is shown
+    greyed as 'occluded' rather than reporting bogus numbers."""
     _text(img, exercise, (24, 44), 0.9)
-    for label, (reps, phase, tut), y in (("L", left, 86), ("R", right, 136)):
+    for label, arm, y in (("L", left, 86), ("R", right, 136)):
+        if arm is None:
+            _text(img, f"{label}  occluded", (24, y), 0.7, (130, 130, 130))
+            continue
+        reps, phase, tut = arm
         col = color_for(phase)
         _text(img, f"{label}  REP {reps}", (24, y), 0.8)
         cv2.rectangle(img, (24, y + 10), (42, y + 28), col, -1)
@@ -169,6 +176,8 @@ def draw_timeline_dual(
     if n == 0:
         return
     for strip, (phases, reps) in enumerate(((left_phases, left_reps), (right_phases, right_reps))):
+        if not phases:   # occluded arm — no strip
+            continue
         y0 = h - 46 + strip * 22
         y1 = y0 + 18
         for i, ph in enumerate(phases):

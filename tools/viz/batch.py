@@ -20,7 +20,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-from visualize import interpret_arm, iter_annotated_frames  # noqa: E402
+from visualize import arm_visible, interpret_arm, iter_annotated_frames  # noqa: E402
 
 from gymbox.dsl import load_spec  # noqa: E402
 
@@ -33,12 +33,15 @@ def _centered(img, text, y, scale, color=(255, 255, 255), thick=2):
 
 
 def title_card(cw, ch, exercise, clip, lreps, rreps, rate, secs=1.2):
+    """lreps/rreps are ints, or None for an occluded arm."""
     img = np.full((ch, cw, 3), 24, np.uint8)
     cv2.rectangle(img, (0, 0), (cw, ch), (60, 60, 60), 4)
     _centered(img, "gymbox", int(ch * 0.30), 1.4, (90, 200, 250))
     _centered(img, exercise, int(ch * 0.46), 1.0)
     _centered(img, clip, int(ch * 0.56), 0.8, (210, 210, 210))
-    _centered(img, f"L {lreps}  -  R {rreps} reps", int(ch * 0.66), 0.9, (80, 220, 80))
+    lt = f"L {lreps}" if lreps is not None else "L occluded"
+    rt = f"R {rreps}" if rreps is not None else "R occluded"
+    _centered(img, f"{lt}   -   {rt}", int(ch * 0.66), 0.85, (80, 220, 80))
     return [img] * max(1, int(secs * rate))
 
 
@@ -76,14 +79,16 @@ def main() -> int:
     for fx in fixtures:
         fixture = json.loads(fx.read_text())
         video = _match_video(fx.stem, args.videos) if args.videos else None
-        _, lreps = interpret_arm(fixture, spec, "left_wrist")
-        _, rreps = interpret_arm(fixture, spec, "right_wrist")
+        frames = fixture["frames"]
+        lreps = len(interpret_arm(fixture, spec, "left_wrist")[1]) if arm_visible(frames, "left") else None
+        rreps = len(interpret_arm(fixture, spec, "right_wrist")[1]) if arm_visible(frames, "right") else None
         for card in title_card(cw, ch, spec.display_name, fx.stem.replace("_", " "),
-                               len(lreps), len(rreps), rate):
+                               lreps, rreps, rate):
             writer.write(card); total_frames += 1
         for _i, img, _info in iter_annotated_frames(fixture, spec, video, canvas=(cw, ch)):
             writer.write(img); total_frames += 1
-        print(f"  + {fx.stem:18s} L {len(lreps)} / R {len(rreps)} reps  (video={'yes' if video else 'no'})")
+        print(f"  + {fx.stem:18s} L {lreps if lreps is not None else 'occ'} / "
+              f"R {rreps if rreps is not None else 'occ'}  (video={'yes' if video else 'no'})")
     writer.release()
     print(f"\nreel -> {args.out}  ({len(fixtures)} clips, {total_frames} frames @ {rate}Hz, "
           f"{total_frames/rate:.0f}s, {cw}x{ch})")

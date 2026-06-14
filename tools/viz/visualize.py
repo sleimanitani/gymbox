@@ -13,14 +13,13 @@ as produced by server/scripts/build_fixtures.py) it:
 
 Optionally draws on the original video as background (--video); otherwise renders
 on a dark canvas (works from the fixture alone). `--png-frame N` dumps a single
-annotated frame to a PNG for inspection.
+annotated frame to a PNG for inspection. `iter_annotated_frames()` is reused by
+batch.py to build a multi-clip reel.
 
     server/.venv/bin/python tools/viz/visualize.py \
         --fixture data/fixtures/Bicep_Curl_5.json \
         --video   "training_data/Biceps_curls/Bicep Curl 5.mp4" \
         --out      data/viz/bicep_curl_5.mp4
-    # single frame for inspection:
-    ... --png-frame 120 --out data/viz/frame.png
 """
 from __future__ import annotations
 
@@ -40,7 +39,19 @@ from gymbox.dsl import load_spec  # noqa: E402
 from gymbox.pipeline.rep import interpret  # noqa: E402
 from gymbox.pipeline.types import Frame, SkeletonStream  # noqa: E402
 
-CANVAS = (1280, 720)  # (w, h) when no background video
+CANVAS = (1280, 720)  # (w, h) when no background video and no --canvas
+
+
+def letterbox(img: np.ndarray, cw: int, ch: int, pad: int = 20) -> np.ndarray:
+    """Fit `img` into a (cw, ch) canvas preserving aspect, centered on dark pad."""
+    h, w = img.shape[:2]
+    scale = min(cw / w, ch / h)
+    nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
+    resized = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)
+    canvas = np.full((ch, cw, 3), pad, np.uint8)
+    x, y = (cw - nw) // 2, (ch - nh) // 2
+    canvas[y:y + nh, x:x + nw] = resized
+    return canvas
 
 
 def _side_at(t, sides):
@@ -72,51 +83,41 @@ def _spec_for_side(spec, side):
 def interpret_timeline(fixture: dict, spec):
     """Per-side interpretation merged into global per-frame arrays.
 
-    Returns (frame_phases, frame_side, rep_bounds, rep_index_at) all indexed by
-    the global frame number.
+    Returns (frame_phases, frame_side, rep_bounds), indexed by global frame.
     """
     frames = fixture["frames"]
     n = len(frames)
+    rate = fixture["sample_rate_hz"]
     sides_meta = fixture.get("meta", {}).get("movement_sides", [])
     frame_phases = ["RESET"] * n
     frame_side: list[str | None] = [None] * n
     rep_bounds: list[tuple[int, int]] = []
-    rep_index_at = [0] * n  # cumulative reps completed by this frame
 
-    spans = list(_spans(frames, sides_meta))
-    if not spans:  # no side info — treat whole thing as right-side
-        spans = [("Right", 0, n)]
-
+    spans = list(_spans(frames, sides_meta)) or [("Right", 0, n)]
     for side, a, b in spans:
         sub = frames[a:b]
         stream = SkeletonStream(
-            sample_rate_hz=fixture["sample_rate_hz"],
+            sample_rate_hz=rate,
             frames=[Frame(frame_index=k, t_s=sub[k]["t_s"],
                           keypoints=[tuple(kp) for kp in sub[k]["keypoints"]])
                     for k in range(len(sub))],
         )
         res = interpret(_spec_for_side(spec, side), stream)
+        base = sub[0]["t_s"]
         for k, ph in enumerate(res.frame_phases):
             frame_phases[a + k] = ph.value
             frame_side[a + k] = side
         for r in res.reps:
-            sf = a + int(round(r.start_s * fixture["sample_rate_hz"])) - int(round(sub[0]["t_s"] * fixture["sample_rate_hz"]))
-            ef = a + int(round(r.end_s * fixture["sample_rate_hz"])) - int(round(sub[0]["t_s"] * fixture["sample_rate_hz"]))
+            sf = a + int(round((r.start_s - base) * rate))
+            ef = a + int(round((r.end_s - base) * rate))
             rep_bounds.append((max(a, sf), min(b - 1, ef)))
-
     rep_bounds.sort()
-    # cumulative rep counter + running TUT need per-frame state; computed in render.
-    completed = 0
-    bi = 0
-    for i in range(n):
-        while bi < len(rep_bounds) and rep_bounds[bi][1] < i:
-            completed += 1
-            bi += 1
-        rep_index_at[i] = completed
     return frame_phases, frame_side, rep_bounds
 
 
-def render(fixture: dict, spec, video: Path | None, out: Path, png_frame: int | None):
+def iter_annotated_frames(fixture: dict, spec, video: Path | None = None,
+                          canvas: tuple[int, int] | None = None):
+    """Yield (i, annotated_bgr_frame, info) for each frame. `canvas`=(w,h) letterboxes."""
     frames = fixture["frames"]
     n = len(frames)
     rate = fixture["sample_rate_hz"]
@@ -125,60 +126,62 @@ def render(fixture: dict, spec, video: Path | None, out: Path, png_frame: int | 
     rep_total = len(rep_bounds)
 
     cap = None
-    if video is not None and video.exists():
+    if video is not None and Path(video).exists():
         cap = cv2.VideoCapture(str(video))
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     else:
-        w, h = CANVAS
+        w, h = canvas if canvas else CANVAS
 
-    writer = None
-    if png_frame is None:
-        out.parent.mkdir(parents=True, exist_ok=True)
-        writer = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*"mp4v"), rate, (w, h))
-
-    tut = 0.0
-    dt = 1.0 / rate
+    tut, dt = 0.0, 1.0 / rate
     for i in range(n):
-        if png_frame is not None and i != png_frame:
-            # still need to advance TUT + (optionally) video for the target frame
-            if frame_phases[i] != "RESET":
-                tut += dt
-            continue
-        # background
         if cap is not None:
             cap.set(cv2.CAP_PROP_POS_MSEC, frames[i]["t_s"] * 1000.0)
             ok, bg = cap.read()
-            img = bg if ok else np.full((h, w, 3), 30, np.uint8)
-            img = cv2.addWeighted(img, 0.55, np.zeros_like(img), 0, 0)  # dim for contrast
+            img = cv2.addWeighted(bg, 0.55, np.zeros_like(bg), 0, 0) if ok else np.full((h, w, 3), 30, np.uint8)
         else:
             img = np.full((h, w, 3), 30, np.uint8)
 
         ph = frame_phases[i]
         if ph != "RESET":
             tut += dt
-        rep_num = sum(1 for s, e in rep_bounds if s <= i) if rep_bounds else 0
+        rep_num = sum(1 for s, _ in rep_bounds if s <= i)
         draw_skeleton(img, frames[i]["keypoints"], active_side=frame_side[i], phase=ph)
         draw_hud(img, exercise=exercise, rep_num=min(rep_num, rep_total),
                  rep_total=rep_total, phase=ph, tut_s=tut, side=frame_side[i])
         draw_timeline(img, frame_phases=frame_phases, rep_bounds=rep_bounds, cur_frame=i)
-        # rep begin/end flash
         for s, e in rep_bounds:
             if i in (s, e):
-                cv2.rectangle(img, (2, 2), (w - 2, h - 2), (60, 240, 60), 6)
+                cv2.rectangle(img, (2, 2), (img.shape[1] - 2, img.shape[0] - 2), (60, 240, 60), 6)
 
-        if png_frame is not None:
-            out.parent.mkdir(parents=True, exist_ok=True)
-            cv2.imwrite(str(out), img)
-            print(f"wrote frame {i} -> {out}")
-            return
-        writer.write(img)
-
-    if writer is not None:
-        writer.release()
-        print(f"wrote {n} frames @ {rate}Hz -> {out}  ({rep_total} reps)")
+        if canvas:
+            img = letterbox(img, canvas[0], canvas[1])
+        yield i, img, {"rep_total": rep_total, "rate": rate}
     if cap is not None:
         cap.release()
+
+
+def render(fixture: dict, spec, video: Path | None, out: Path, png_frame: int | None):
+    rate = fixture["sample_rate_hz"]
+    writer = None
+    last = None
+    for i, img, info in iter_annotated_frames(fixture, spec, video):
+        if png_frame is not None:
+            if i == png_frame:
+                out.parent.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(out), img)
+                print(f"wrote frame {i} -> {out}")
+                return
+            continue
+        if writer is None:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            h, w = img.shape[:2]
+            writer = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*"mp4v"), rate, (w, h))
+        writer.write(img)
+        last = info
+    if writer is not None:
+        writer.release()
+        print(f"wrote mp4 -> {out}  ({last['rep_total']} reps @ {rate}Hz)")
 
 
 def main() -> int:

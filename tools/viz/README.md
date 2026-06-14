@@ -46,10 +46,27 @@ Outputs go under `data/` (gitignored). Detection runs **per movement-side span**
 (active wrist), since `db_curl` is single-arm and the videos alternate arms;
 results are merged into one timeline.
 
+## Batch reel
+
+Render every fixture into one normalized, title-carded sizzle reel:
+
+```bash
+server/.venv/bin/python tools/viz/batch.py \
+  --fixtures data/fixtures \
+  --videos   training_data/Biceps_curls \
+  --out      data/viz/reel.mp4 \
+  --canvas   540x960          # portrait; clips are letterboxed to this
+```
+
+Each clip gets a `gymbox` title card (exercise / clip name / rep count) followed
+by its annotated frames. Per-clip mp4s are still available via `visualize.py`.
+
 ## Files
 - `skeleton.py` — OpenCV drawing (33-kpt MediaPipe connections, phase→colour, HUD,
   timeline). No gymbox import.
-- `visualize.py` — CLI: load fixture (+video) → call the library → render.
+- `visualize.py` — CLI: load fixture (+video) → call the library → render one mp4
+  or a still. Exposes `iter_annotated_frames()` for reuse.
+- `batch.py` — concatenates all fixtures into one reel with title cards.
 
 ## Phase colours
 CON = green · ECC = blue · ISO_UNLOADED (bottom hold) = amber · RESET = grey.

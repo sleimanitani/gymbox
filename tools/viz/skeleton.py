@@ -83,9 +83,16 @@ def draw_skeleton_dual(
     left_phase: str,
     right_phase: str,
     vis_thresh: float = 0.3,
+    left_thresh: float | None = None,    # override for an estimated (occluded) arm
+    right_thresh: float | None = None,
 ) -> None:
-    """Draw the pose with EACH arm tinted by its own phase (both arms tracked)."""
+    """Draw the pose with EACH arm tinted by its own phase (both arms tracked).
+
+    An arm reconstructed by the filter (occluded) passes a lower per-arm threshold
+    so its (estimated) bones still draw."""
     h, w = img.shape[:2]
+    lt = left_thresh if left_thresh is not None else vis_thresh
+    rt = right_thresh if right_thresh is not None else vis_thresh
 
     def px(i):
         x, y, _ = keypoints[i]
@@ -96,15 +103,15 @@ def draw_skeleton_dual(
 
     lcol, rcol = color_for(left_phase), color_for(right_phase)
     for a, b in POSE_CONNECTIONS:
-        if vis(a) < vis_thresh or vis(b) < vis_thresh:
-            continue
         edge = (a, b)
         if edge in RIGHT_ARM or (b, a) in RIGHT_ARM:
-            col, thick = rcol, 6
+            col, thick, th = rcol, 6, rt
         elif edge in LEFT_ARM or (b, a) in LEFT_ARM:
-            col, thick = lcol, 6
+            col, thick, th = lcol, 6, lt
         else:
-            col, thick = BONE, 3
+            col, thick, th = BONE, 3, vis_thresh
+        if vis(a) < th or vis(b) < th:
+            continue
         cv2.line(img, px(a), px(b), col, thick, cv2.LINE_AA)
     for i in range(33):
         if vis(i) >= vis_thresh:
@@ -142,21 +149,23 @@ def draw_hud_dual(
     img: np.ndarray,
     *,
     exercise: str,
-    left: tuple[int, str, float] | None,    # (reps, phase, tut_s) or None if occluded
+    left: tuple[int, str, float] | None,    # (reps, phase, tut_s) or None if absent
     right: tuple[int, str, float] | None,
+    left_est: bool = False,                 # arm recovered by the filter (occluded)
+    right_est: bool = False,
 ) -> None:
-    """HUD showing each VISIBLE arm: rep counter, phase chip, running TUT.
-
-    An arm passed as None is occluded (not visible to the camera) and is shown
-    greyed as 'occluded' rather than reporting bogus numbers."""
+    """HUD showing each arm: rep counter, phase chip, running TUT. An arm
+    recovered while occluded is flagged '(est)'; a fully absent arm shows '—'."""
     _text(img, exercise, (24, 44), 0.9)
-    for label, arm, y in (("L", left, 86), ("R", right, 136)):
+    for label, arm, est, y in (("L", left, left_est, 86), ("R", right, right_est, 136)):
         if arm is None:
-            _text(img, f"{label}  occluded", (24, y), 0.7, (130, 130, 130))
+            _text(img, f"{label}  --", (24, y), 0.7, (130, 130, 130))
             continue
         reps, phase, tut = arm
         col = color_for(phase)
-        _text(img, f"{label}  REP {reps}", (24, y), 0.8)
+        suffix = "  (est)" if est else ""
+        _text(img, f"{label}  REP {reps}{suffix}", (24, y), 0.8,
+              (180, 180, 180) if est else (255, 255, 255))
         cv2.rectangle(img, (24, y + 10), (42, y + 28), col, -1)
         _text(img, f"{phase}  {tut:4.1f}s", (50, y + 27), 0.62, col)
 

@@ -55,19 +55,24 @@ labels (the phone won't have them).
 `--single-arm` uses the older path instead: track only the active wrist per
 labelled movement-side span.
 
-### Visibility gating
+### Occluded arm: confidence-adaptive filter (recovery, not dropping)
 
-The fixtures contain **both arms** every frame, but a single camera can't see an
-occluded arm — MediaPipe still emits coordinates for it but with ~0 visibility,
-and those low-confidence points produce phantom reps. The viz therefore **gates by
-visibility**: an arm whose median wrist+elbow visibility is below 0.5 is shown as
-`occluded` and not tracked/counted. Example: side-on Bicep Curl 8 → left arm
-visibility 0.12 → `L occluded`, only the right arm tracked (this also removes the
-~24 phantom left-arm reps it produced ungated).
+The fixtures contain **both arms** every frame. When an arm is occluded (side-on
+view) MediaPipe emits low-confidence coordinates — but they still *track the
+arm's motion*, just noisily. So instead of dropping the arm, the viz **denoises
+it with a heavier smoothing window** (confidence-adaptive: median wrist+elbow
+visibility < 0.5 → S-G window `OCCLUDED_WINDOW`=15 instead of the spec's 9) and
+draws it at a lower threshold, flagged **`(est)`**.
 
-> Reliable two-arm tracking needs the arm to be *visible* (frontal-ish camera).
-> Beyond visibility, an `active`/`inactive` motion gate (knowing which visible arm
-> is actually working) is a library/MVP-β item — see `docs/NOTES.md`.
+Validated on side-on Bicep Curl 8 (left arm visibility 0.12):
+`window 9 → 24 phantom reps` → `window 15 → 13` (the true count). The recovered
+arm is rendered and labelled estimated rather than hidden.
+
+> Symmetry could further help, but only for *simultaneous* bilateral curls
+> (left↔right corr +0.96 on Bicep Curl 5 vs −0.19 on alternating Bicep Curl 9),
+> so it's a conditional prior, not implemented. Beyond visibility, an
+> `active`/`inactive` motion gate (which *visible* arm is actually working) is a
+> library/MVP-β item — see `docs/NOTES.md`.
 
 ## Batch reel
 

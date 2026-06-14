@@ -77,11 +77,15 @@ decision. Append here rather than silently diverging from a locked decision.
 - **Both-arm detection (two gates: visible, then active).** To track both arms
   label-free, run the interpreter independently per wrist (the viz does this).
   Two distinct failure modes:
-  1. **Occlusion** — a single camera can't see the far arm in side-on views
-     (Bicep Curl 8: left wrist visibility 0.12). MediaPipe emits low-confidence
-     coords that jitter into phantom reps (left → 24 vs ~13). **Handled in the viz
-     by a visibility gate** (median wrist+elbow vis ≥ 0.5 → tracked, else shown
-     "occluded"). For the library, gate rep emission on keypoint visibility.
+  1. **Occlusion** — a single camera sees the far arm poorly in side-on views
+     (Bicep Curl 8: left wrist visibility 0.12). The low-confidence coords still
+     TRACK the arm's motion (std 0.042 ≈ the visible arm's 0.043) but are noisy →
+     phantom reps at the spec window (left → 24 vs ~13). **Recovered, not dropped:**
+     confidence-adaptive smoothing (heavier S-G window, 15 vs 9) denoises it →
+     13 reps (correct). The viz does this and flags the arm "(est)". A library
+     version would scale the smoothing window by keypoint confidence. Symmetry is
+     an extra prior but only for *simultaneous* bilateral work (corr +0.96 vs
+     −0.19 alternating), so it's conditional.
   2. **Active vs resting** — even when both arms are visible, only one may be
      working (true alternating). Crediting reps to the idle-but-visible arm needs
      an **active-arm gate** (the reserved `active`/`inactive` layers l7/l8, or a

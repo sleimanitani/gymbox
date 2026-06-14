@@ -20,7 +20,13 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-from visualize import arm_visible, interpret_arm, iter_annotated_frames  # noqa: E402
+from visualize import (  # noqa: E402
+    VIS_GATE,
+    arm_visibility,
+    interpret_arm,
+    iter_annotated_frames,
+    window_for,
+)
 
 from gymbox.dsl import load_spec  # noqa: E402
 
@@ -32,16 +38,18 @@ def _centered(img, text, y, scale, color=(255, 255, 255), thick=2):
     cv2.putText(img, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, scale, color, thick, cv2.LINE_AA)
 
 
-def title_card(cw, ch, exercise, clip, lreps, rreps, rate, secs=1.2):
-    """lreps/rreps are ints, or None for an occluded arm."""
+def title_card(cw, ch, exercise, clip, left, right, rate, secs=1.2):
+    """left/right are (reps:int, est:bool)."""
     img = np.full((ch, cw, 3), 24, np.uint8)
     cv2.rectangle(img, (0, 0), (cw, ch), (60, 60, 60), 4)
     _centered(img, "gymbox", int(ch * 0.30), 1.4, (90, 200, 250))
     _centered(img, exercise, int(ch * 0.46), 1.0)
     _centered(img, clip, int(ch * 0.56), 0.8, (210, 210, 210))
-    lt = f"L {lreps}" if lreps is not None else "L occluded"
-    rt = f"R {rreps}" if rreps is not None else "R occluded"
+    lt = f"L {left[0]}" + ("*" if left[1] else "")
+    rt = f"R {right[0]}" + ("*" if right[1] else "")
     _centered(img, f"{lt}   -   {rt}", int(ch * 0.66), 0.85, (80, 220, 80))
+    if left[1] or right[1]:
+        _centered(img, "* estimated (occluded)", int(ch * 0.72), 0.5, (150, 150, 150))
     return [img] * max(1, int(secs * rate))
 
 
@@ -80,15 +88,18 @@ def main() -> int:
         fixture = json.loads(fx.read_text())
         video = _match_video(fx.stem, args.videos) if args.videos else None
         frames = fixture["frames"]
-        lreps = len(interpret_arm(fixture, spec, "left_wrist")[1]) if arm_visible(frames, "left") else None
-        rreps = len(interpret_arm(fixture, spec, "right_wrist")[1]) if arm_visible(frames, "right") else None
+        base = spec.smoothing.window_frames
+        lvis, rvis = arm_visibility(frames, "left"), arm_visibility(frames, "right")
+        lreps = len(interpret_arm(fixture, spec, "left_wrist", window_for(lvis, base))[1])
+        rreps = len(interpret_arm(fixture, spec, "right_wrist", window_for(rvis, base))[1])
+        lest, rest = lvis < VIS_GATE, rvis < VIS_GATE
         for card in title_card(cw, ch, spec.display_name, fx.stem.replace("_", " "),
-                               lreps, rreps, rate):
+                               (lreps, lest), (rreps, rest), rate):
             writer.write(card); total_frames += 1
         for _i, img, _info in iter_annotated_frames(fixture, spec, video, canvas=(cw, ch)):
             writer.write(img); total_frames += 1
-        print(f"  + {fx.stem:18s} L {lreps if lreps is not None else 'occ'} / "
-              f"R {rreps if rreps is not None else 'occ'}  (video={'yes' if video else 'no'})")
+        print(f"  + {fx.stem:18s} L {lreps}{'*' if lest else ''} / R {rreps}{'*' if rest else ''}"
+              f"  (video={'yes' if video else 'no'})")
     writer.release()
     print(f"\nreel -> {args.out}  ({len(fixtures)} clips, {total_frames} frames @ {rate}Hz, "
           f"{total_frames/rate:.0f}s, {cw}x{ch})")

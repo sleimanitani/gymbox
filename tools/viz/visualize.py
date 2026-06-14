@@ -126,19 +126,30 @@ def interpret_timeline(fixture: dict, spec):
 _ARM_JOINTS = {"left": (15, 13), "right": (16, 14)}
 
 
-def arm_visible(frames: list, side: str, gate: float = 0.5) -> bool:
-    """True if `side` arm is reliably visible (median wrist+elbow visibility >= gate).
-
-    A single camera can't see an occluded arm; its low-confidence coordinates are
-    noise. Gating on visibility avoids drawing/counting an arm that isn't there.
-    """
+def arm_visibility(frames: list, side: str) -> float:
+    """Median wrist+elbow visibility for `side` arm (0..1)."""
     wrist, elbow = _ARM_JOINTS[side]
     vis = sorted((f["keypoints"][wrist][2] + f["keypoints"][elbow][2]) / 2 for f in frames)
-    median = vis[len(vis) // 2] if vis else 0.0
-    return median >= gate
+    return vis[len(vis) // 2] if vis else 0.0
 
 
-def interpret_arm(fixture: dict, spec, joint: str):
+def arm_visible(frames: list, side: str, gate: float = 0.5) -> bool:
+    return arm_visibility(frames, side) >= gate
+
+
+# Confidence-adaptive smoothing: a low-visibility (occluded) arm's keypoints still
+# track its motion but are noisy; a heavier S-G window denoises them so reps are
+# recovered instead of inflated. Validated on Bicep Curl 8 (left arm vis 0.12:
+# window 9 -> 24 phantom reps; window 15 -> 13, the true count).
+VIS_GATE = 0.5          # below this an arm is "estimated" (occluded)
+OCCLUDED_WINDOW = 15    # S-G window for an estimated arm
+
+
+def window_for(visibility: float, base_window: int) -> int:
+    return base_window if visibility >= VIS_GATE else max(base_window, OCCLUDED_WINDOW)
+
+
+def interpret_arm(fixture: dict, spec, joint: str, window: int | None = None):
     """Run the interpreter on ONE wrist over the whole clip (label-free).
 
     Returns (frame_phases: list[str], rep_bounds: list[(start_frame, end_frame)]).
@@ -151,7 +162,10 @@ def interpret_arm(fixture: dict, spec, joint: str):
                       keypoints=[tuple(kp) for kp in frames[k]["keypoints"]])
                 for k in range(len(frames))],
     )
-    s = spec.model_copy(update={"signal": spec.signal.model_copy(update={"joint": joint})})
+    upd = {"signal": spec.signal.model_copy(update={"joint": joint})}
+    if window is not None:
+        upd["smoothing"] = spec.smoothing.model_copy(update={"window_frames": window})
+    s = spec.model_copy(update=upd)
     res = interpret(s, stream)
     phases = [p.value for p in res.frame_phases]
     bounds = [(int(round(r.start_s * rate)), int(round(r.end_s * rate))) for r in res.reps]
@@ -172,15 +186,18 @@ def iter_annotated_frames(fixture: dict, spec, video: Path | None = None,
     dt = 1.0 / rate
 
     if dual:
-        # Visibility gate: only track an arm the camera can actually see. A
-        # single camera can't see an occluded arm, and its low-confidence
-        # coordinates produce phantom reps — so gate detection by it.
-        left_on = arm_visible(frames, "left")
-        right_on = arm_visible(frames, "right")
-        lph, lreps = interpret_arm(fixture, spec, "left_wrist") if left_on else ([], [])
-        rph, rreps = interpret_arm(fixture, spec, "right_wrist") if right_on else ([], [])
+        # Track BOTH arms. An occluded arm (low visibility) still has its motion
+        # in the data — just noisy — so denoise it with a heavier window
+        # (confidence-adaptive smoothing) and flag it "(est)" rather than dropping it.
+        lvis, rvis = arm_visibility(frames, "left"), arm_visibility(frames, "right")
+        base = spec.smoothing.window_frames
+        left_est, right_est = lvis < VIS_GATE, rvis < VIS_GATE
+        lph, lreps = interpret_arm(fixture, spec, "left_wrist", window_for(lvis, base))
+        rph, rreps = interpret_arm(fixture, spec, "right_wrist", window_for(rvis, base))
+        left_on = right_on = True  # always rendered now; estimated arms flagged
         info = {"left_reps": len(lreps), "right_reps": len(rreps),
-                "left_on": left_on, "right_on": right_on, "rate": rate}
+                "left_on": left_on, "right_on": right_on,
+                "left_est": left_est, "right_est": right_est, "rate": rate}
     else:
         frame_phases, frame_side, rep_bounds = interpret_timeline(fixture, spec)
         info = {"rep_total": len(rep_bounds), "rate": rate}
@@ -203,21 +220,19 @@ def iter_annotated_frames(fixture: dict, spec, video: Path | None = None,
             img = np.full((h, w, 3), 30, np.uint8)
 
         if dual:
-            lp = lph[i] if left_on else "RESET"
-            rp = rph[i] if right_on else "RESET"
-            if left_on and lp != "RESET":
+            lp, rp = lph[i], rph[i]
+            if lp != "RESET":
                 ltut += dt
-            if right_on and rp != "RESET":
+            if rp != "RESET":
                 rtut += dt
             ln = sum(1 for s, _ in lreps if s <= i)
             rn = sum(1 for s, _ in rreps if s <= i)
-            # draw_skeleton hides low-vis joints anyway; gate phase tint too
-            draw_skeleton_dual(img, frames[i]["keypoints"],
-                               left_phase=lp if left_on else "RESET",
-                               right_phase=rp if right_on else "RESET")
-            draw_hud_dual(img, exercise=exercise,
-                          left=(ln, lp, ltut) if left_on else None,
-                          right=(rn, rp, rtut) if right_on else None)
+            # estimated (occluded) arms draw at a low threshold so they still show
+            draw_skeleton_dual(img, frames[i]["keypoints"], left_phase=lp, right_phase=rp,
+                               left_thresh=0.05 if left_est else 0.3,
+                               right_thresh=0.05 if right_est else 0.3)
+            draw_hud_dual(img, exercise=exercise, left=(ln, lp, ltut), right=(rn, rp, rtut),
+                          left_est=left_est, right_est=right_est)
             draw_timeline_dual(img, left_phases=lph, right_phases=rph,
                                left_reps=lreps, right_reps=rreps, cur_frame=i)
             for s, e in lreps + rreps:
@@ -265,8 +280,8 @@ def render(fixture: dict, spec, video: Path | None, out: Path, png_frame: int | 
     if writer is not None:
         writer.release()
         if dual:
-            lt = f"L {last['left_reps']}" if last.get("left_on") else "L occluded"
-            rt = f"R {last['right_reps']}" if last.get("right_on") else "R occluded"
+            lt = f"L {last['left_reps']}" + (" est" if last.get("left_est") else "")
+            rt = f"R {last['right_reps']}" + (" est" if last.get("right_est") else "")
             tag = f"{lt} / {rt}"
         else:
             tag = f"{last['rep_total']} reps"

@@ -31,7 +31,13 @@ and keeps it current.
 
 ## Active plans
 
-_None active. db_curl now follows the data (per-side phase agreement 0.759,
+_None active — visualizer shipped (see Completed). Candidate next work below._
+
+---
+
+## Parked / candidate next work
+
+_db_curl now follows the data (per-side phase agreement 0.759,
 rep-err 0.08) but is still below the 0.85 Gate-A bar. Candidate NEXT work (see
 NOTES.md 'db_curl fitted to real data'): push phase agreement up (tune
 min_amplitude/prominence; promote band_frac to a spec field; transition
@@ -41,6 +47,24 @@ signal so detection isn't right-wrist-only. Open a plan before starting._
 ---
 
 ## Completed plans
+
+### Plan 2026-06-14-A — Skeleton + rep/phase visualizer (marketing tool) — done 2026-06-14
+**Session:** `0558415f-c661-422e-816d-4558654b95ae`.
+**Result:** `tools/viz/` (separate from the library; imports + calls
+`gymbox.pipeline.rep.interpret`, never modifies it). `skeleton.py` (OpenCV
+drawing: 33-kpt pose, phase colours, HUD, timeline) + `visualize.py` (per-side
+interpret → merged timeline → annotated mp4; `--png-frame` for stills). Verified:
+rendered Bicep Curl 5 → 286 frames/3 reps mp4, and inspected CON/ECC stills
+(skeleton overlay, REP x/3, phase chip, TUT, side tag, timeline all correct).
+opencv-python-headless added to server/.venv. Outputs land in data/ (gitignored).
+
+- [x] env: opencv into server/.venv
+- [x] skeleton.py (draw + colours)
+- [x] visualize.py (per-side interpret → mp4 + png-frame)
+- [x] verify on a real video (CON/ECC stills viewed)
+- [x] README + commit/push
+
+---
 
 ### Plan 2026-06-13-E — Align db_curl to the data + per-side eval — done 2026-06-14
 **Session:** `0558415f-c661-422e-816d-4558654b95ae`.
@@ -227,5 +251,5 @@ session can `Read` a dead session's transcript for full context.
 
 | Session id | Date | Summary | Outcome |
 |---|---|---|---|
-| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09..14 | Crash recovery + WORKLOG; Gate A/B; Steps 8-9; real-data eval; **fitted db_curl to data** (per-side phase agr 0.354→0.759, rep-err→0.08). | active |
+| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09..14 | Crash recovery + WORKLOG; Gate A/B; Steps 8-9; fitted db_curl to data; user-metric fitter + calibration; **skeleton/rep visualizer** (tools/viz). | active |
 | `dfe32566-721e-421d-95bc-d416644b027f` | 2026-06-09 | Doc reorientation (offline fitter) + first commit. Completed CLAUDE.md edits. | **crashed** 11:40 (stream idle timeout); Plan 2026-06-08-A steps 2–4 left undone |

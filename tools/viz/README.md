@@ -42,9 +42,25 @@ server/.venv/bin/python tools/viz/visualize.py \
   --out data/viz/frame.png --png-frame 192
 ```
 
-Outputs go under `data/` (gitignored). Detection runs **per movement-side span**
-(active wrist), since `db_curl` is single-arm and the videos alternate arms;
-results are merged into one timeline.
+Outputs go under `data/` (gitignored).
+
+### Both arms (default) vs single-arm
+
+By default the visualizer tracks **both wrists independently** (label-free): it
+runs the interpreter once per wrist over the whole clip, tints each arm by its own
+phase, and shows **L / R rep counters** and two timeline strips. This covers
+simultaneous, alternating, and single-arm curls and needs no `movement_side`
+labels (the phone won't have them).
+
+`--single-arm` uses the older path instead: track only the active wrist per
+labelled movement-side span.
+
+> ⚠️ **Known caveat (detection, not viz):** on some alternating clips the
+> *resting* arm over-counts (e.g. Bicep Curl 8 → L 24 vs ~13 expected) because the
+> idle arm isn't perfectly still. Deciding "which arm is actually working" is an
+> `active`/`inactive`-layer detection feature the library doesn't have yet
+> (MVP-β) — see `docs/NOTES.md`. The per-frame phase tint is mostly correct; it's
+> the rep *count* on the idle arm that inflates.
 
 ## Batch reel
 

@@ -32,7 +32,14 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-from skeleton import draw_hud, draw_skeleton, draw_timeline  # noqa: E402
+from skeleton import (  # noqa: E402
+    draw_hud,
+    draw_hud_dual,
+    draw_skeleton,
+    draw_skeleton_dual,
+    draw_timeline,
+    draw_timeline_dual,
+)
 
 # library imports — we USE gymbox, we don't change it
 from gymbox.dsl import load_spec  # noqa: E402
@@ -115,15 +122,46 @@ def interpret_timeline(fixture: dict, spec):
     return frame_phases, frame_side, rep_bounds
 
 
+def interpret_arm(fixture: dict, spec, joint: str):
+    """Run the interpreter on ONE wrist over the whole clip (label-free).
+
+    Returns (frame_phases: list[str], rep_bounds: list[(start_frame, end_frame)]).
+    """
+    frames = fixture["frames"]
+    rate = fixture["sample_rate_hz"]
+    stream = SkeletonStream(
+        sample_rate_hz=rate,
+        frames=[Frame(frame_index=k, t_s=frames[k]["t_s"],
+                      keypoints=[tuple(kp) for kp in frames[k]["keypoints"]])
+                for k in range(len(frames))],
+    )
+    s = spec.model_copy(update={"signal": spec.signal.model_copy(update={"joint": joint})})
+    res = interpret(s, stream)
+    phases = [p.value for p in res.frame_phases]
+    bounds = [(int(round(r.start_s * rate)), int(round(r.end_s * rate))) for r in res.reps]
+    return phases, bounds
+
+
 def iter_annotated_frames(fixture: dict, spec, video: Path | None = None,
-                          canvas: tuple[int, int] | None = None):
-    """Yield (i, annotated_bgr_frame, info) for each frame. `canvas`=(w,h) letterboxes."""
+                          canvas: tuple[int, int] | None = None, dual: bool = True):
+    """Yield (i, annotated_bgr_frame, info) for each frame. `canvas`=(w,h) letterboxes.
+
+    dual=True tracks BOTH wrists independently (each arm tinted by its own phase,
+    L/R rep counters). dual=False uses the per-movement-side path (active wrist).
+    """
     frames = fixture["frames"]
     n = len(frames)
     rate = fixture["sample_rate_hz"]
     exercise = spec.display_name
-    frame_phases, frame_side, rep_bounds = interpret_timeline(fixture, spec)
-    rep_total = len(rep_bounds)
+    dt = 1.0 / rate
+
+    if dual:
+        lph, lreps = interpret_arm(fixture, spec, "left_wrist")
+        rph, rreps = interpret_arm(fixture, spec, "right_wrist")
+        info = {"left_reps": len(lreps), "right_reps": len(rreps), "rate": rate}
+    else:
+        frame_phases, frame_side, rep_bounds = interpret_timeline(fixture, spec)
+        info = {"rep_total": len(rep_bounds), "rate": rate}
 
     cap = None
     if video is not None and Path(video).exists():
@@ -133,7 +171,7 @@ def iter_annotated_frames(fixture: dict, spec, video: Path | None = None,
     else:
         w, h = canvas if canvas else CANVAS
 
-    tut, dt = 0.0, 1.0 / rate
+    ltut = rtut = tut = 0.0
     for i in range(n):
         if cap is not None:
             cap.set(cv2.CAP_PROP_POS_MSEC, frames[i]["t_s"] * 1000.0)
@@ -142,30 +180,47 @@ def iter_annotated_frames(fixture: dict, spec, video: Path | None = None,
         else:
             img = np.full((h, w, 3), 30, np.uint8)
 
-        ph = frame_phases[i]
-        if ph != "RESET":
-            tut += dt
-        rep_num = sum(1 for s, _ in rep_bounds if s <= i)
-        draw_skeleton(img, frames[i]["keypoints"], active_side=frame_side[i], phase=ph)
-        draw_hud(img, exercise=exercise, rep_num=min(rep_num, rep_total),
-                 rep_total=rep_total, phase=ph, tut_s=tut, side=frame_side[i])
-        draw_timeline(img, frame_phases=frame_phases, rep_bounds=rep_bounds, cur_frame=i)
-        for s, e in rep_bounds:
-            if i in (s, e):
-                cv2.rectangle(img, (2, 2), (img.shape[1] - 2, img.shape[0] - 2), (60, 240, 60), 6)
+        if dual:
+            lp, rp = lph[i], rph[i]
+            if lp != "RESET":
+                ltut += dt
+            if rp != "RESET":
+                rtut += dt
+            ln = sum(1 for s, _ in lreps if s <= i)
+            rn = sum(1 for s, _ in rreps if s <= i)
+            draw_skeleton_dual(img, frames[i]["keypoints"], left_phase=lp, right_phase=rp)
+            draw_hud_dual(img, exercise=exercise, left=(ln, lp, ltut), right=(rn, rp, rtut))
+            draw_timeline_dual(img, left_phases=lph, right_phases=rph,
+                               left_reps=lreps, right_reps=rreps, cur_frame=i)
+            for s, e in lreps + rreps:
+                if i in (s, e):
+                    cv2.rectangle(img, (2, 2), (img.shape[1] - 2, img.shape[0] - 2), (60, 240, 60), 6)
+        else:
+            ph = frame_phases[i]
+            if ph != "RESET":
+                tut += dt
+            rep_num = sum(1 for s, _ in rep_bounds if s <= i)
+            draw_skeleton(img, frames[i]["keypoints"], active_side=frame_side[i], phase=ph)
+            draw_hud(img, exercise=exercise, rep_num=min(rep_num, len(rep_bounds)),
+                     rep_total=len(rep_bounds), phase=ph, tut_s=tut, side=frame_side[i])
+            draw_timeline(img, frame_phases=frame_phases, rep_bounds=rep_bounds, cur_frame=i)
+            for s, e in rep_bounds:
+                if i in (s, e):
+                    cv2.rectangle(img, (2, 2), (img.shape[1] - 2, img.shape[0] - 2), (60, 240, 60), 6)
 
         if canvas:
             img = letterbox(img, canvas[0], canvas[1])
-        yield i, img, {"rep_total": rep_total, "rate": rate}
+        yield i, img, info
     if cap is not None:
         cap.release()
 
 
-def render(fixture: dict, spec, video: Path | None, out: Path, png_frame: int | None):
+def render(fixture: dict, spec, video: Path | None, out: Path, png_frame: int | None,
+           dual: bool = True):
     rate = fixture["sample_rate_hz"]
     writer = None
     last = None
-    for i, img, info in iter_annotated_frames(fixture, spec, video):
+    for i, img, info in iter_annotated_frames(fixture, spec, video, dual=dual):
         if png_frame is not None:
             if i == png_frame:
                 out.parent.mkdir(parents=True, exist_ok=True)
@@ -181,7 +236,9 @@ def render(fixture: dict, spec, video: Path | None, out: Path, png_frame: int | 
         last = info
     if writer is not None:
         writer.release()
-        print(f"wrote mp4 -> {out}  ({last['rep_total']} reps @ {rate}Hz)")
+        tag = (f"L {last['left_reps']} / R {last['right_reps']} reps"
+               if dual else f"{last['rep_total']} reps")
+        print(f"wrote mp4 -> {out}  ({tag} @ {rate}Hz)")
 
 
 def main() -> int:
@@ -193,11 +250,13 @@ def main() -> int:
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--png-frame", type=int, default=None,
                     help="dump a single annotated frame index to --out (PNG) instead of mp4")
+    ap.add_argument("--single-arm", action="store_true",
+                    help="track only the active wrist per movement-side span (default: both arms)")
     args = ap.parse_args()
 
     fixture = json.loads(args.fixture.read_text())
     spec = load_spec(args.spec)
-    render(fixture, spec, args.video, args.out, args.png_frame)
+    render(fixture, spec, args.video, args.out, args.png_frame, dual=not args.single_arm)
     return 0
 
 

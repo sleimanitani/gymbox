@@ -76,6 +76,41 @@ def draw_skeleton(
             cv2.circle(img, px(i), 4, JOINT, -1, cv2.LINE_AA)
 
 
+def draw_skeleton_dual(
+    img: np.ndarray,
+    keypoints: list,
+    *,
+    left_phase: str,
+    right_phase: str,
+    vis_thresh: float = 0.3,
+) -> None:
+    """Draw the pose with EACH arm tinted by its own phase (both arms tracked)."""
+    h, w = img.shape[:2]
+
+    def px(i):
+        x, y, _ = keypoints[i]
+        return int(x * w), int(y * h)
+
+    def vis(i):
+        return keypoints[i][2]
+
+    lcol, rcol = color_for(left_phase), color_for(right_phase)
+    for a, b in POSE_CONNECTIONS:
+        if vis(a) < vis_thresh or vis(b) < vis_thresh:
+            continue
+        edge = (a, b)
+        if edge in RIGHT_ARM or (b, a) in RIGHT_ARM:
+            col, thick = rcol, 6
+        elif edge in LEFT_ARM or (b, a) in LEFT_ARM:
+            col, thick = lcol, 6
+        else:
+            col, thick = BONE, 3
+        cv2.line(img, px(a), px(b), col, thick, cv2.LINE_AA)
+    for i in range(33):
+        if vis(i) >= vis_thresh:
+            cv2.circle(img, px(i), 4, JOINT, -1, cv2.LINE_AA)
+
+
 def _text(img, s, org, scale=0.8, color=(255, 255, 255), thick=2):
     cv2.putText(img, s, org, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), thick + 3, cv2.LINE_AA)
     cv2.putText(img, s, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, thick, cv2.LINE_AA)
@@ -101,6 +136,49 @@ def draw_hud(
     _text(img, f"TUT {tut_s:4.1f}s", (24, 158), 0.7)
     if side:
         _text(img, side.upper(), (img.shape[1] - 150, 44), 0.7, (200, 200, 255))
+
+
+def draw_hud_dual(
+    img: np.ndarray,
+    *,
+    exercise: str,
+    left: tuple[int, str, float],    # (reps, phase, tut_s)
+    right: tuple[int, str, float],
+) -> None:
+    """HUD showing BOTH arms: per-arm rep counter, phase chip, running TUT."""
+    _text(img, exercise, (24, 44), 0.9)
+    for label, (reps, phase, tut), y in (("L", left, 86), ("R", right, 136)):
+        col = color_for(phase)
+        _text(img, f"{label}  REP {reps}", (24, y), 0.8)
+        cv2.rectangle(img, (24, y + 10), (42, y + 28), col, -1)
+        _text(img, f"{phase}  {tut:4.1f}s", (50, y + 27), 0.62, col)
+
+
+def draw_timeline_dual(
+    img: np.ndarray,
+    *,
+    left_phases: list[str],
+    right_phases: list[str],
+    left_reps: list[tuple[int, int]],
+    right_reps: list[tuple[int, int]],
+    cur_frame: int,
+) -> None:
+    """Two stacked phase strips (L over R) with per-arm rep ticks + shared playhead."""
+    h, w = img.shape[:2]
+    n = max(len(left_phases), len(right_phases))
+    if n == 0:
+        return
+    for strip, (phases, reps) in enumerate(((left_phases, left_reps), (right_phases, right_reps))):
+        y0 = h - 46 + strip * 22
+        y1 = y0 + 18
+        for i, ph in enumerate(phases):
+            cv2.rectangle(img, (int(i / n * w), y0), (int((i + 1) / n * w), y1), color_for(ph), -1)
+        for s, e in reps:
+            for f in (s, e):
+                x = int(f / n * w)
+                cv2.line(img, (x, y0), (x, y1), (255, 255, 255), 1, cv2.LINE_AA)
+    xh = int(cur_frame / n * w)
+    cv2.line(img, (xh, h - 48), (xh, h - 4), (40, 40, 240), 2, cv2.LINE_AA)
 
 
 def draw_timeline(

@@ -74,6 +74,14 @@ decision. Append here rather than silently diverging from a locked decision.
 - **Alternating arms:** db_curl tracks `right_wrist`; ~45% of these videos are
   left-arm reps. Evaluation is **per-side** (track the active wrist). A
   side-aware signal (or per-side spec selection on device) is a real MVP-β item.
+- **Both-arm detection / "active arm" gating (MVP-β).** To track both arms
+  label-free, run the interpreter independently per wrist (the viz does this).
+  But the *resting* arm over-counts (e.g. Bicep Curl 8: left wrist → 24 reps vs
+  ~13) because the idle arm isn't perfectly still. Doing both arms correctly needs
+  an **active-arm gate** — only credit a rep on the arm that is actually working.
+  This maps to the reserved `active`/`inactive` annotation layers (l7/l8, already
+  in the label schema) and/or a `composite` signal (architecture.md §11.3). The
+  per-frame phase tint is fine; it's the rep *count* on the idle arm that inflates.
 - **`band_frac` is not in the DSL grammar** (hard-coded 0.25 in
   `DynamicBands`). If band tuning matters for the fitter, promote it to a spec
   field first — don't hard-code spec values.

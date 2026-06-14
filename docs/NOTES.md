@@ -55,3 +55,25 @@ decision. Append here rather than silently diverging from a locked decision.
 - `model_spec` stays `null` through MVP-α. The interpreter checks
   `if model_spec is not None` and treats null as a no-op — keep that branch free
   of model-loading overhead.
+
+## db_curl fitted to real data (2026-06-14)
+
+- **Phase convention changed to follow the data** (owner decision): bottom hold →
+  `ISO_UNLOADED`, top pause → `RESET`, `ISO_LOADED` unused. db_curl phase rules +
+  `window_frames` (7→9) and `abs_v` (0.04→0.08) were set by the offline fitter
+  (`server/scripts/fit_db_curl.py`) to maximise per-side Gate A on the labelled
+  videos. architecture.md §10 updated; synthetic fixture + Gate B oracle
+  regenerated to the new convention (both still pass).
+- **Open: phase agreement is 0.759 per-side, below the 0.85 bar.** Rep counting is
+  solved (mean err 0.08). The remaining gap is phase-boundary disagreement (human
+  label jitter at CON/ECC/hold transitions; RESET-at-top vs end-of-CON fuzziness).
+  Levers not yet tried: tune `min_amplitude`/`prominence_frac`, a `band_frac`
+  grammar field (currently a hard-coded 0.25 constant in `rep.py` — not tunable
+  via the spec), `sign_changed_within_ms` transition smoothing, boundary-tolerant
+  scoring, and simply more labelled data.
+- **Alternating arms:** db_curl tracks `right_wrist`; ~45% of these videos are
+  left-arm reps. Evaluation is **per-side** (track the active wrist). A
+  side-aware signal (or per-side spec selection on device) is a real MVP-β item.
+- **`band_frac` is not in the DSL grammar** (hard-coded 0.25 in
+  `DynamicBands`). If band tuning matters for the fitter, promote it to a spec
+  field first — don't hard-code spec values.

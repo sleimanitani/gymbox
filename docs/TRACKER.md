@@ -34,7 +34,8 @@ experiments as Gate A/B tuning happens.
 
 - **Gate A** (acceptance, Python vs human labels): rep error ≤ 1, frame-phase
   agreement ≥ 85%. Status: **PASSES** on the synthetic `bicep_curl_1` fixture —
-  rep error 0 (8/8), agreement 0.884. ⚠️ This proves the *interpreter plumbing*,
+  rep error 0 (8/8), agreement 0.907 (regenerated to the data-aligned phase
+  convention, 2026-06-14). ⚠️ This proves the *interpreter plumbing*,
   not the *tuning*: the fixture is synthetic (NOTES.md). The residual ~12%
   disagreement is dominated by the lead-in/trailing RESET frames, which the
   generator labels RESET while the arm sits at the bottom (low band) so the
@@ -80,6 +81,9 @@ agreement, verdict._
 | 2026-06-10 | bicep_curl_1 (synthetic) | implement `rep.interpret` (zig-zag extrema + per-frame phase); db_curl.json **unchanged** | 0 | 0.884 | **Gate A PASS** (plumbing; synthetic fixture) |
 | 2026-06-13 | bicep_curl_1 (oracle) | port `DSLInterpreter.swift` from rep.py (Gate B: Swift vs Python) | 0 | 1.000 | **Gate B PASS** — exact parity, 0-frame boundary dev |
 | 2026-06-13 | **8 real labelled videos** (training_data, MediaPipe Lite @15Hz) | db_curl **unchanged** vs hand labels | mean 5.38 (CON-count truth) / **≤1 vs right-side reps** | 0.354 | **FAIL 0/8** — see Real-data findings below |
+| 2026-06-14 | 8 real videos, **per-side** | db_curl unchanged, per-side eval (active wrist) | 0.10 | 0.565 | isolates arm artifact; rep counting solved |
+| 2026-06-14 | 8 real videos, per-side | **fitter**: data-aligned phase rules + abs_v 0.08, window 9 | 0.08 | **0.759** | db_curl updated to follow data (owner decision) |
+| 2026-06-14 | synthetic bicep_curl_1 (regenerated, new convention) | new db_curl plumbing check | 0 | 0.907 | **Gate A PASS** (plumbing) |
 
 ### Real-data findings (2026-06-13) — first run on hand-labelled videos
 
@@ -102,8 +106,16 @@ first real test. db_curl as-is does **not** pass (0/8, micro phase-agreement
    agreement is unmeasurable.
 4. **RESET convention differs** + many sub-0.1s phase segments the interpreter
    doesn't emit. Minor vs 2–3.
-Tooling: `server/scripts/build_fixtures.py` (pose+labels→fixture) and
-`eval_gate_a.py` (per-video Gate A). Reproducible; data/ + training_data/ gitignored.
+Tooling: `server/scripts/build_fixtures.py` (pose+labels→fixture),
+`eval_gate_a.py` (per-video), `eval_perside.py` (per-side), `fit_db_curl.py`
+(offline fitter). Reproducible; data/ + training_data/ gitignored.
+
+**Resolution (2026-06-14).** (2) → per-side eval (track the active wrist). (3) →
+fitter set db_curl's phase rules to the data convention (bottom hold
+`ISO_UNLOADED`, top pause `RESET`) + `abs_v` 0.04→0.08, `window` 7→9.
+Per-side phase agreement **0.354 → 0.759**, rep-err **5.38 → 0.08**. Synthetic
+fixture + Gate B oracle regenerated; both still pass. **Still below the 0.85 bar**
+(phase-boundary jitter) — next levers in NOTES.md "db_curl fitted to real data".
 
 ## SOTA / references
 

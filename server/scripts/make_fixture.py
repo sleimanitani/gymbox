@@ -115,14 +115,17 @@ def generate(
     def n_frames(seconds: float) -> int:
         return max(1, int(round(seconds * sample_rate_hz)))
 
-    # Lead-in: RESET at the mid/bottom.
+    # Lead-in: standing with the arm extended (bottom) -> ISO_UNLOADED under the
+    # data-defined convention (bottom + stationary), which is what the interpreter
+    # emits there too.
     for _ in range(n_frames(lead_in_s)):
-        emit(y_bottom, "RESET")
+        emit(y_bottom, "ISO_UNLOADED")
 
     for _ in range(n_reps):
-        # ISO_LOADED hold at bottom (arm extended).
+        # Bottom/extended hold -> ISO_UNLOADED (data-defined convention; see
+        # architecture.md §10 + docs/TRACKER.md "Real-data findings").
         for _ in range(n_frames(hold_bottom_s)):
-            emit(y_bottom, "ISO_LOADED")
+            emit(y_bottom, "ISO_UNLOADED")
         # CON: lift bottom -> top (y decreases).
         cf = n_frames(con_s)
         for k in range(cf):
@@ -130,9 +133,9 @@ def generate(
             # ease-in-out for plausibility
             s = 0.5 - 0.5 * math.cos(math.pi * frac)
             emit(y_bottom + (y_top - y_bottom) * s, "CON")
-        # ISO_UNLOADED hold at top (arm flexed).
+        # Top/flexed pause -> RESET (data-defined convention).
         for _ in range(n_frames(hold_top_s)):
-            emit(y_top, "ISO_UNLOADED")
+            emit(y_top, "RESET")
         # ECC: lower top -> bottom (y increases).
         ef = n_frames(ecc_s)
         for k in range(ef):
@@ -140,9 +143,9 @@ def generate(
             s = 0.5 - 0.5 * math.cos(math.pi * frac)
             emit(y_top + (y_bottom - y_top) * s, "ECC")
 
-    # Trailing RESET.
+    # Trailing: arm back at the bottom, stationary -> ISO_UNLOADED (as above).
     for _ in range(n_frames(0.6)):
-        emit(y_bottom, "RESET")
+        emit(y_bottom, "ISO_UNLOADED")
 
     return {
         "name": "bicep_curl_1",

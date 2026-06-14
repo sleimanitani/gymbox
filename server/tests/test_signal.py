@@ -56,5 +56,5 @@ def test_velocity_length_and_units(
 
 
 def test_emission_delay_is_half_window(db_curl_spec: ExerciseSpec) -> None:
-    # window_frames = 7 -> half-window = 3
-    assert emission_delay_frames(db_curl_spec.smoothing) == 3
+    # window_frames = 9 -> half-window = 4
+    assert emission_delay_frames(db_curl_spec.smoothing) == 4

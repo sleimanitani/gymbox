@@ -31,19 +31,37 @@ and keeps it current.
 
 ## Active plans
 
-### Plan 2026-06-13-E — Reconcile real-data labels + tune/fit db_curl (NEXT)
-**Blocked on user decisions** (see TRACKER 'Real-data findings'):
-1. Phase-label semantics: labelers' `ISO_UNLOADED` = bottom hold (wrist down),
-   opposite gymbox's def; `ISO_LOADED` unused. Decide: relabel to gymbox
-   convention, remap in the converter, or revise the DSL definitions.
-2. Alternating arms: per-side eval / side-aware signal / right-only data?
-3. Rep-count ground truth: right-side CON (recommended) vs l10 vs all-CON.
-Once settled: build `server/gymbox/fitter/` to search db_curl params maximizing
-Gate A on the (reconciled) real fixtures.
+_None active. db_curl now follows the data (per-side phase agreement 0.759,
+rep-err 0.08) but is still below the 0.85 Gate-A bar. Candidate NEXT work (see
+NOTES.md 'db_curl fitted to real data'): push phase agreement up (tune
+min_amplitude/prominence; promote band_frac to a spec field; transition
+smoothing; boundary-tolerant scoring; more labelled data), and/or a side-aware
+signal so detection isn't right-wrist-only. Open a plan before starting._
 
 ---
 
 ## Completed plans
+
+### Plan 2026-06-13-E — Align db_curl to the data + per-side eval — done 2026-06-14
+**Session:** `0558415f-c661-422e-816d-4558654b95ae`.
+**User decisions:** follow the DATA's phase semantics; per-side; rep truth = CON/side.
+**Result:** built per-side eval + offline fitter; **db_curl updated to follow the
+data**. Per-side phase agreement **0.354→0.759**, rep-err **5.38→0.08**. Phase
+convention now: bottom hold `ISO_UNLOADED`, top pause `RESET`, `ISO_LOADED`
+unused; `abs_v` 0.04→0.08, `window` 7→9. Synthetic fixture + Gate B oracle
+regenerated; server suite 23 passed (PG), synthetic Gate A 0.907, Swift Gate B
+still exact parity. **Still below 0.85** — gap + next levers in NOTES.md.
+**Env:** characterization showed labels: CON/ECC |v|~0.17; ISO_UNLOADED |v|0.02 @
+bottom; RESET @ top. See [[real-data]].
+
+- [x] **Characterize** phases per-side (velocity + position).
+- [x] **Per-side eval** (`eval_perside.py`) — active wrist per side-span.
+- [x] **Rewrite db_curl** phase rules to data; architecture.md §10 + NOTES updated.
+- [x] **Offline fitter** (`fit_db_curl.py`) — searched abs_v×window; best 0.08/9.
+- [x] **Re-run + regen** — synthetic fixture + oracle regenerated; all green.
+- [x] **Commit.**
+
+---
 
 ### Plan 2026-06-13-D — Real-data detection quality — done 2026-06-13
 **Goal:** measure REAL Gate A on the 8 hand-labelled bicep videos.
@@ -209,5 +227,5 @@ session can `Read` a dead session's transcript for full context.
 
 | Session id | Date | Summary | Outcome |
 |---|---|---|---|
-| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09..13 | Crash recovery + WORKLOG; docs+commit `8b53a10`; **Gate A**, **Gate B** (exact parity), Step 8 reinterpret, Step 9 integration; **real-data eval** (db_curl 0/8, root-caused). | active |
+| `0558415f-c661-422e-816d-4558654b95ae` | 2026-06-09..14 | Crash recovery + WORKLOG; Gate A/B; Steps 8-9; real-data eval; **fitted db_curl to data** (per-side phase agr 0.354→0.759, rep-err→0.08). | active |
 | `dfe32566-721e-421d-95bc-d416644b027f` | 2026-06-09 | Doc reorientation (offline fitter) + first commit. Completed CLAUDE.md edits. | **crashed** 11:40 (stream idle timeout); Plan 2026-06-08-A steps 2–4 left undone |

@@ -17,7 +17,7 @@ def test_etag_is_deterministic(db_curl_spec: ExerciseSpec) -> None:
 
 def test_etag_changes_with_spec(db_curl_spec: ExerciseSpec) -> None:
     mutated = db_curl_spec.model_copy(deep=True)
-    mutated.smoothing.window_frames = 9  # 7 -> 9
+    mutated.smoothing.window_frames = 11  # 9 -> 11
     assert compute_etag(mutated) != compute_etag(db_curl_spec)
 
 

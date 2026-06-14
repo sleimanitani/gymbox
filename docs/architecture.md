@@ -368,12 +368,25 @@ The locked `db_curl` spec in `server/exercises/db_curl.json` is the canonical re
 
 Phase labels (first-match-wins, order matters): `RESET → ISO_LOADED → ISO_UNLOADED → CON → ECC`.
 
-**Definitional note — `ISO_LOADED` vs `ISO_UNLOADED`.** These are defined by *target-muscle tension*, not by whether the external weight is present (the dumbbell weighs the same throughout). For `db_curl` (target = biceps):
+**Phase convention — fitted to labelled data (2026-06-14).** The operative
+`db_curl` phase mapping is set by the offline fitter against the human-labelled
+videos (see `docs/TRACKER.md` "Real-data findings") and follows the labellers'
+convention, which is **signal/position-defined**, not muscle-tension-defined:
 
-- **`ISO_LOADED`** — hold at the *bottom*, arm extended. The biceps is lengthened and actively resisting; gravity's moment arm about the elbow is near-maximal. Muscle is loaded.
-- **`ISO_UNLOADED`** — hold at the *top*, arm fully flexed, dumbbell up. The biceps is shortened and the forearm is near-vertical, so gravity's moment arm collapses and tension on the muscle is minimal. Muscle is unloaded.
+- **`ISO_UNLOADED`** — the *bottom/extended* hold: wrist low, signal in the LOW
+  band, near-zero velocity.
+- **`RESET`** — the *top/flexed* pause (signal HIGH band, near-zero velocity) and
+  any other non-moving frame (the default label).
+- **`CON`** — moving toward the high end (lifting). **`ECC`** — moving toward the
+  low end (lowering).
+- **`ISO_LOADED`** — *unused* by `db_curl` in MVP-α (the dataset effectively uses
+  a single iso hold). The label stays in the grammar for other exercises.
 
-Both phases are therefore **reachable in `db_curl`**; `ISO_UNLOADED` is not merely forward-compat. The position bands in the locked spec distinguish them (top-of-range hold → `ISO_UNLOADED`, bottom-of-range hold → `ISO_LOADED`). Note this is the inverse of an *external-load* reading, where a weight held overhead would seem "loaded" — the muscle-tension framing is what the spec encodes, and it generalizes correctly to other exercises where the loaded/unloaded ends differ.
+This **supersedes the earlier muscle-tension framing** (which placed
+`ISO_UNLOADED` at the top) for `db_curl`: per owner decision the standard follows
+the data. The first-match-wins evaluation **order** above is unchanged and
+remains locked; only the spec's rule *values* changed (the sanctioned offline-fit
+mechanism — § offline spec fitting).
 
 ### Validation contract — two ordered gates
 

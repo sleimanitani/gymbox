@@ -12,7 +12,7 @@
 
   "smoothing": {
     "method": "savitzky_golay",
-    "window_frames": 7,
+    "window_frames": 9,
     "polyorder": 2
   },
 
@@ -30,35 +30,28 @@
       {
         "label": "RESET",
         "when": {
-          "abs_v_lt": 0.04,
-          "position_band": "mid"
-        }
-      },
-      {
-        "label": "ISO_LOADED",
-        "when": {
-          "abs_v_lt": 0.04,
-          "position_band": "low"
+          "abs_v_lt": 0.08,
+          "position_band": "high"
         }
       },
       {
         "label": "ISO_UNLOADED",
         "when": {
-          "abs_v_lt": 0.04,
-          "position_band": "high"
+          "abs_v_lt": 0.08,
+          "position_band": "low"
         }
       },
       {
         "label": "CON",
         "when": {
-          "abs_v_gt": 0.04,
+          "abs_v_gt": 0.08,
           "direction": "toward_high"
         }
       },
       {
         "label": "ECC",
         "when": {
-          "abs_v_gt": 0.04,
+          "abs_v_gt": 0.08,
           "direction": "toward_low"
         }
       }
